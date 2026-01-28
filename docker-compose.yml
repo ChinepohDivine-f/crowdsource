@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: crowdsource_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: drive_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Backend service definition for future use (if containerized)
+  # backend:
+  #   build: ./backend
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - db
+  #   environment:
+  #     DATABASE_URL: postgresql://user:password@db:5432/drive_test
+
+volumes:
+  postgres_data:
