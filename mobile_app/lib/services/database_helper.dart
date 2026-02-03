@@ -12,12 +12,26 @@ class DatabaseHelper {
     _database = await _initDB('measurements.db');
     return _database!;
   }
-
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 3,
+      onCreate: _createDB,
+      onUpgrade: _onUpgrade,
+    );
+  }
+
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE measurements ADD COLUMN rsrq INTEGER');
+      await db.execute('ALTER TABLE measurements ADD COLUMN rssi INTEGER');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE measurements ADD COLUMN status TEXT');
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -27,8 +41,11 @@ CREATE TABLE measurements (
   device_id TEXT,
   network_type TEXT,
   rsrp INTEGER,
+  rsrq INTEGER,
+  rssi INTEGER,
   sinr INTEGER,
   cell_id INTEGER,
+  status TEXT,
   latitude REAL,
   longitude REAL,
   timestamp TEXT

@@ -10,8 +10,11 @@ class Measurement(Base):
     device_id = Column(String, index=True)
     network_type = Column(String)  # 'LTE' or 'NR'
     rsrp = Column(Integer)
+    rsrq = Column(Integer)
+    rssi = Column(Integer)
     sinr = Column(Integer)
     cell_id = Column(BigInteger)
+    status = Column(String)  # 'Good' or 'Hole'
     # Stores location as a Geography point (WGS84)
     location = Column(Geography(geometry_type='POINT', srid=4326)) 
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
