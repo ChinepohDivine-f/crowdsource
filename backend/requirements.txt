@@ -9,3 +9,5 @@ alembic==1.14.0
 shapely==2.0.6
 requests==2.32.3
 python-multipart==0.0.22
+slowapi==0.1.9
+scikit-learn==1.6.1
