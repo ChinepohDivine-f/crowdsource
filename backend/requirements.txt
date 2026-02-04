@@ -8,3 +8,4 @@ pydantic-settings==2.7.0
 alembic==1.14.0
 shapely==2.0.6
 requests==2.32.3
+python-multipart==0.0.22
