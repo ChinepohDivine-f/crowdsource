@@ -55,8 +55,12 @@ BASE_STYLE = """
 <style>
     body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: #121212; color: #e0e0e0; }
     .container { max-width: 1000px; margin: 40px auto; padding: 20px; }
-    h1 { color: #fff; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 30px; }
-    .card { background: #1e1e1e; padding: 25px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
+    h1 { color: #fff; border-bottom: 2px solid #4facfe; padding-bottom: 10px; margin-bottom: 30px; display: inline-block; }
+    .card { background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    .stat-card { background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%); padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: center; }
+    .stat-value { font-size: 28px; font-weight: bold; color: #4facfe; margin-bottom: 5px; }
+    .stat-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
     label { display: block; margin-bottom: 8px; font-weight: 600; color: #aaa; font-size: 12px; text-transform: uppercase; }
     input, select, textarea { width: 100%; padding: 10px; background: #2d2d2d; border: 1px solid #444; color: white; border-radius: 4px; margin-bottom: 20px; box-sizing: border-box; }
     button { padding: 10px 20px; background: #4facfe; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
@@ -213,47 +217,139 @@ def view_register():
     """
 
 @app.get("/view/analytics", response_class=HTMLResponse)
-def view_analytics():
+def view_analytics(db: Session = Depends(database.get_db)):
+    # Quick aggregation for stat cards
+    total_count = db.query(models.NetworkMeasurement).count()
+    avg_rsrp = db.query(text("SELECT AVG(rsrp) FROM core_networkmeasurement")).scalar() or 0
+    unique_devices = db.query(models.NetworkMeasurement.device_id).distinct().count()
+    
     return f"""
     <!DOCTYPE html>
     <html>
-    <head><title>Analytics Control</title>{BASE_STYLE}</head>
+    <head>
+        <title>Senzor Analytics</title>
+        {BASE_STYLE}
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
     <body>
         {NAV_HTML}
         <div class="container">
-            <h1>📊 Data Analytics & Insights</h1>
+            <h1>📊 Network Intelligence Dashboard</h1>
             
-            <div class="card">
-                <h2>Coverage Hole Detection (DBSCAN)</h2>
-                <p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">
-                    Runs density-based clustering on recent measurements with RSRP < -110 dBm to identify contiguous dead zones.
-                </p>
-                <button onclick="runAnalysis()">Run Analysis</button>
-                <div id="analyticsResult" style="margin-top: 20px; display:none;">
-                    <pre id="jsonOutput"></pre>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{total_count}</div>
+                    <div class="stat-label">Total Data Points</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{avg_rsrp:.1f} dBm</div>
+                    <div class="stat-label">Avg Signal (RSRP)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{unique_devices}</div>
+                    <div class="stat-label">Active Devices</div>
                 </div>
             </div>
-            
-            <div class="card">
-                <h2>Heatmap Aggregation</h2>
-                <p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">
-                    Aggregates millions of points into 100m² grid cells for visualization performance.
-                </p>
-                <a href="/api/v1/analytics/heatmap" target="_blank"><button class="secondary">View JSON Data</button></a>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                <div class="card">
+                    <h3>📡 Signal Strength Distribution</h3>
+                    <canvas id="rsrpChart" height="150"></canvas>
+                </div>
+                <div class="card">
+                    <h3>📶 Network Technology</h3>
+                    <canvas id="netTypeChart"></canvas>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top:20px;">
+                <div class="card">
+                    <h3>🧠 ML Signal Predictor</h3>
+                    <p style="color: #888; font-size: 13px;">Predict coverage quality at any coordinate using our RandomForest spatial model.</p>
+                    <div style="margin-top: 20px;">
+                        <input type="text" id="ml_lat" placeholder="Latitude (e.g. 40.7128)">
+                        <input type="text" id="ml_lon" placeholder="Longitude (e.g. -74.0060)">
+                        <button onclick="predictSignal()" style="width: 100%;">📊 Forecast Signal</button>
+                    </div>
+                    <div id="mlResult" style="margin-top: 20px; display:none; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4facfe;">
+                        <div style="font-size: 12px; color: #888;">PREDICTED RSRP</div>
+                        <div id="mlVal" style="font-size: 32px; font-weight: bold; color: #4facfe;">-105.4 dBm</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🛠 Spatial Clustering (DBSCAN)</h3>
+                    <p style="color: #888; font-size: 13px;">Detect contiguous "Coverage Holes" automatically from raw measurement density.</p>
+                    <button class="secondary" onclick="runAnalysis()" style="width:100%; margin-top: 15px;">Run Hole Detection</button>
+                    <div id="analyticsResult" style="margin-top: 20px; display:none;">
+                        <pre id="jsonOutput" style="font-size: 10px; max-height: 150px;"></pre>
+                    </div>
+                </div>
             </div>
         </div>
+
         <script>
-            async function runAnalysis() {{
-                const btn = document.querySelector('button');
-                btn.innerText = 'Running...';
-                try {{
-                    const res = await fetch('/api/v1/analytics/trigger');
-                    const data = await res.json();
-                    document.getElementById('jsonOutput').innerText = JSON.stringify(data, null, 2);
-                    document.getElementById('analyticsResult').style.display = 'block';
-                }} catch(e) {{ alert(e); }}
-                btn.innerText = 'Run Analysis';
+            // Fetch Stats and Load Charts
+            async function loadCharts() {{
+                const res = await fetch('/api/v1/analytics/stats');
+                const data = await res.json();
+
+                // RSRP Chart
+                new Chart(document.getElementById('rsrpChart'), {{
+                    type: 'bar',
+                    data: {{
+                        labels: data.rsrp_bins.map(b => b.range),
+                        datasets: [{{
+                            label: 'Measurement Count',
+                            data: data.rsrp_bins.map(b => b.count),
+                            backgroundColor: '#4facfe88',
+                            borderColor: '#4facfe',
+                            borderWidth: 1
+                        }}]
+                    }},
+                    options: {{ responsive: true, scales: {{ y: {{ beginAtZero: true, grid: {{ color: '#333' }} }}, x: {{ grid: {{ display: false }} }} }} }}
+                }});
+
+                // Network Type Chart
+                new Chart(document.getElementById('netTypeChart'), {{
+                    type: 'doughnut',
+                    data: {{
+                        labels: Object.keys(data.net_types),
+                        datasets: [{{
+                            data: Object.values(data.net_types),
+                            backgroundColor: ['#4facfe', '#00f2fe', '#333']
+                        }}]
+                    }},
+                    options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
+                }});
             }}
+
+            async function predictSignal() {{
+                const lat = document.getElementById('ml_lat').value;
+                const lon = document.getElementById('ml_lon').value;
+                const res = await fetch(`/api/v1/analytics/predict?lat=${{lat}}&lon=${{lon}}`);
+                const data = await res.json();
+                
+                const box = document.getElementById('mlResult');
+                const val = document.getElementById('mlVal');
+                box.style.display = 'block';
+                if(data.prediction) {{
+                    val.innerText = data.prediction.toFixed(1) + " dBm";
+                    val.style.color = data.prediction < -110 ? '#ff4b2b' : '#4facfe';
+                }} else {{
+                    val.innerText = "Sparse Data";
+                    val.style.color = "#888";
+                }}
+            }}
+
+            async function runAnalysis() {{
+                const res = await fetch('/api/v1/analytics/trigger');
+                const data = await res.json();
+                document.getElementById('jsonOutput').innerText = JSON.stringify(data, null, 2);
+                document.getElementById('analyticsResult').style.display = 'block';
+            }}
+
+            loadCharts();
         </script>
     </body>
     </html>
@@ -496,6 +592,37 @@ def trigger_analysis(db: Session = Depends(database.get_db)):
             "geometry": mapping(h["geometry"])
         })
     return {"type": "FeatureCollection", "features": features}
+
+@app.get("/api/v1/analytics/stats")
+def get_analytics_stats(db: Session = Depends(database.get_db)):
+    # RSRP Distribution
+    sql = "SELECT rsrp FROM core_networkmeasurement"
+    rsrps = [r[0] for r in db.execute(text(sql)).fetchall()]
+    
+    bins = [
+        {"range": "< -120", "count": 0},
+        {"range": "-120 to -110", "count": 0},
+        {"range": "-110 to -100", "count": 0},
+        {"range": "-100 to -90", "count": 0},
+        {"range": "> -90", "count": 0}
+    ]
+    for r in rsrps:
+        if r < -120: bins[0]["count"] += 1
+        elif r < -110: bins[1]["count"] += 1
+        elif r < -100: bins[2]["count"] += 1
+        elif r < -90: bins[3]["count"] += 1
+        else: bins[4]["count"] += 1
+        
+    # Network Type Mix
+    net_sql = "SELECT network_type, COUNT(*) FROM core_networkmeasurement GROUP BY network_type"
+    net_types = dict(db.execute(text(net_sql)).fetchall())
+    
+    return {"rsrp_bins": bins, "net_types": net_types}
+
+@app.get("/api/v1/analytics/predict")
+def get_ml_prediction(lat: float, lon: float, db: Session = Depends(database.get_db)):
+    prediction = analysis.predict_signal_strength(db, lat, lon)
+    return {"prediction": prediction}
 
 @app.get("/api/v1/analytics/heatmap")
 def get_heatmap(db: Session = Depends(database.get_db)):

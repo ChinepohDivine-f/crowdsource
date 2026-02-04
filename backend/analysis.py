@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
+from sklearn.ensemble import RandomForestRegressor
 from shapely.geometry import Point, MultiPoint, Polygon
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -73,3 +74,39 @@ def detect_coverage_holes(db: Session):
         })
 
     return holes
+
+class SignalPredictor:
+    """SRS 7.2: Predictive Coverage Modeling"""
+    def __init__(self, db: Session):
+        self.db = db
+        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
+        self.is_trained = False
+
+    def train(self):
+        # Fetch all measurements to train the model
+        data = self.db.query(models.NetworkMeasurement).all()
+        if len(data) < 10:
+            return False
+
+        X = []
+        y = []
+        for m in data:
+            pt = to_shape(m.location)
+            X.append([pt.x, pt.y]) # Lon, Lat
+            y.append(m.rsrp)
+
+        self.model.fit(np.array(X), np.array(y))
+        self.is_trained = True
+        return True
+
+    def predict(self, lat: float, lon: float):
+        if not self.is_trained:
+            if not self.train():
+                return None
+        
+        prediction = self.model.predict(np.array([[lon, lat]]))[0]
+        return float(prediction)
+
+def predict_signal_strength(db: Session, lat: float, lon: float):
+    predictor = SignalPredictor(db)
+    return predictor.predict(lat, lon)

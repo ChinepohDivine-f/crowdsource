@@ -11,7 +11,7 @@ import 'database_helper.dart';
 class SyncService {
   // Base URL - ensure this matches your backend IP
   // final String baseUrl = "http://172.18.232.209:8000/api/v1";
-  final String baseUrl = "https://crowdsource-backend-3ixx.onrender.com";
+  final String baseUrl = "https://crowdsource-backend-3ixx.onrender.com/api/v1";
 
   Future<String?> _getStoredToken() async {
     final prefs = await SharedPreferences.getInstance();
