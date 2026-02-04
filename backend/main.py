@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Se
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from typing import List, Optional
 from geoalchemy2.shape import to_shape 
 from shapely.geometry import Point, mapping
@@ -58,9 +58,12 @@ BASE_STYLE = """
     h1 { color: #fff; border-bottom: 2px solid #4facfe; padding-bottom: 10px; margin-bottom: 30px; display: inline-block; }
     .card { background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-    .stat-card { background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%); padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: center; }
+    .stat-card { background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%); padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: center; transition: transform 0.3s ease, border-color 0.3s ease; }
+    .stat-card:hover { transform: translateY(-5px); border-color: #4facfe; }
     .stat-value { font-size: 28px; font-weight: bold; color: #4facfe; margin-bottom: 5px; }
     .stat-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(79, 172, 254, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0); } }
+    .pulse-ready { animation: pulse 2s infinite; }
     label { display: block; margin-bottom: 8px; font-weight: 600; color: #aaa; font-size: 12px; text-transform: uppercase; }
     input, select, textarea { width: 100%; padding: 10px; background: #2d2d2d; border: 1px solid #444; color: white; border-radius: 4px; margin-bottom: 20px; box-sizing: border-box; }
     button { padding: 10px 20px; background: #4facfe; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
@@ -220,7 +223,7 @@ def view_register():
 def view_analytics(db: Session = Depends(database.get_db)):
     # Quick aggregation for stat cards
     total_count = db.query(models.NetworkMeasurement).count()
-    avg_rsrp = db.query(text("SELECT AVG(rsrp) FROM core_networkmeasurement")).scalar() or 0
+    avg_rsrp = db.query(func.avg(models.NetworkMeasurement.rsrp)).scalar() or 0
     unique_devices = db.query(models.NetworkMeasurement.device_id).distinct().count()
     
     return f"""
@@ -271,7 +274,7 @@ def view_analytics(db: Session = Depends(database.get_db)):
                         <input type="text" id="ml_lon" placeholder="Longitude (e.g. -74.0060)">
                         <button onclick="predictSignal()" style="width: 100%;">📊 Forecast Signal</button>
                     </div>
-                    <div id="mlResult" style="margin-top: 20px; display:none; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4facfe;">
+                    <div id="mlResult" class="pulse-ready" style="margin-top: 20px; display:none; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4facfe;">
                         <div style="font-size: 12px; color: #888;">PREDICTED RSRP</div>
                         <div id="mlVal" style="font-size: 32px; font-weight: bold; color: #4facfe;">-105.4 dBm</div>
                     </div>
