@@ -1,4 +1,4 @@
-# Crowdsensed Drive Test Application
+# Senzor: Crowdsensed Drive Test Platform
 
 A professional Mobile-to-Cloud crowdsensing system designed for cellular network monitoring and analysis. This platform allows for real-time capture of network metrics like RSRP and SINR, coupled with GPS data, to identify coverage holes and optimize network performance.
 
@@ -54,6 +54,16 @@ docker run --name crowdsource_db \
 2.  **Configuration**: Update your Local IP address in `lib/services/sync_service.dart` to point to the FastAPI server.
 3.  Install dependencies: `flutter pub get`
 4.  Run the app: `flutter run`
+
+---
+
+---
+
+## ☁️ Deployment
+
+Want to run this properly on a server?
+- **[Standard Deployment Guide (VPS)](DEPLOYMENT.md)** - For DigitalOcean, AWS, etc.
+- **[Free Hosting Guide (Zero Cost)](FREE_HOSTING.md)** - Using Supabase and Render.
 
 ---
 
