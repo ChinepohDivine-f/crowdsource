@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'screens/dashboard_page.dart';
+import 'screens/splash_screen.dart';
+import 'theme/app_theme.dart';
 
 /// Entry point of the Crowdsensing Application.
 /// 
@@ -16,13 +17,9 @@ class CrowdsourceApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Crowdsensed Drive Test',
-      theme: ThemeData(
-        brightness: Brightness.dark, // Premium dark theme as requested
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: const DashboardPage(),
+      title: 'Senzor - Network Intelligence',
+      theme: AppTheme.darkTheme,
+      home: const SplashScreen(),
     );
   }
 }

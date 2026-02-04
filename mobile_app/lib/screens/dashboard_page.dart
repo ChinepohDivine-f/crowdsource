@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../services/database_helper.dart';
 import '../services/sync_service.dart';
 import 'help_page.dart';
+import '../theme/app_colors.dart';
 
 /// DashboardPage: The main interface for network data collection and visualization.
 /// 
@@ -27,6 +28,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   bool _isCollecting = false;
   bool _isRawMode = false;
+  bool _isSyncing = false;
+  int _pendingMeasurements = 0;
   String _deviceName = "Driver_Phone";
   Timer? _timer;
   Map<String, dynamic>? _currentInfo;
@@ -37,9 +40,22 @@ class _DashboardPageState extends State<DashboardPage> {
   final MapController _mapController = MapController();
 
   @override
+  void initState() {
+    super.initState();
+    _updatePendingCount();
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _updatePendingCount() async {
+    final measurements = await DatabaseHelper.instance.queryAllMeasurements();
+    setState(() {
+      _pendingMeasurements = measurements.length;
+    });
   }
 
   /// Starts or stops the background data collection timer.
@@ -82,6 +98,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
         // CITENOTE: Persistent local storage ensures data isn't lost offline.
       await DatabaseHelper.instance.insertMeasurement(measurement);
+      await _updatePendingCount();
       
       final newPos = ll.LatLng(pos.latitude, pos.longitude);
       final newMarker = _createMarker(
@@ -195,8 +212,8 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Crowdsensed Drive Test'),
+      appBar:AppBar(
+        title: const Text('Senzor'),
         actions: [
           IconButton(
             onPressed: () => Navigator.push(
@@ -208,13 +225,48 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           IconButton(
             onPressed: _showChangeNameDialog,
-            icon: const Icon(Icons.edit, color: Colors.blueAccent),
+            icon: const Icon(Icons.edit),
             tooltip: 'Change Device Name',
           ),
-          IconButton(
-            onPressed: _handleSync,
-            icon: const Icon(Icons.sync),
-            tooltip: 'Sync Data',
+          Stack(
+            children: [
+              IconButton(
+                onPressed: _isSyncing ? null : _handleSync,
+                icon: _isSyncing 
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.sync),
+                tooltip: 'Sync Data',
+              ),
+              if (_pendingMeasurements > 0 && !_isSyncing)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      _pendingMeasurements > 99 ? '99+' : '$_pendingMeasurements',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
           IconButton(
             onPressed: _showResetConfirmation,
@@ -501,6 +553,10 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _handleSync() async {
+    setState(() {
+      _isSyncing = true;
+    });
+    
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Syncing data to cloud...'), duration: Duration(seconds: 1)),
     );
@@ -509,11 +565,12 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync successful!'), backgroundColor: Colors.green),
+            const SnackBar(content: Text('✅ Sync successful!'), backgroundColor: Colors.green),
           );
+          await _updatePendingCount();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync failed! Check connection or server.'), backgroundColor: Colors.red),
+            const SnackBar(content: Text('❌ Sync failed! Check connection or server.'), backgroundColor: Colors.red),
           );
         }
       }
@@ -522,6 +579,12 @@ class _DashboardPageState extends State<DashboardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Sync failed: $e'), backgroundColor: Colors.red),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
       }
     }
   }
