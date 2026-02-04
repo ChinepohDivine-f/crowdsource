@@ -8,7 +8,6 @@ This guide explains how to host your **Crowdsensed Drive Test Application** for 
 | :--- | :--- | :--- | :--- |
 | **Database** | [Supabase](https://supabase.com) | **Free Forever** | 500MB storage, supports PostGIS via extension. |
 | **Backend** | [Render](https://render.com) | **Free** | Spins down after inactivity (15 mins), HTTPS included. |
-Senzor@2026
 ---
 
 ## 🛠 Part 1: Set up the Database (Supabase)
@@ -37,7 +36,6 @@ Supabase provides a managed PostgreSQL database that is perfect for this project
     *   Under **Connection Parameters**, look for "URI" or "Connection String".
     *   It will look like this: `postgresql://postgres:[YOUR-PASSWORD]@db.xxxx.supabase.co:5432/postgres`
     *   **Action**: Copy this string and replace `[YOUR-PASSWORD]` with the password you created in step 2. **Keep this safe.**
-postgresql://postgres:Senzor@2026@db.prbxscjomajvkpaipuiy.supabase.co:5432/postgres
 ---
 
 ## 🖥 Part 2: Deploy the Backend (Render)
