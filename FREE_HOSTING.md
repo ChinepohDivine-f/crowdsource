@@ -34,8 +34,21 @@ Supabase provides a managed PostgreSQL database that is perfect for this project
 4.  **Get Connection String**:
     *   Go to **Project Settings** (gear icon) -> **Database**.
     *   Under **Connection Parameters**, look for "URI" or "Connection String".
-    *   It will look like this: `postgresql://postgres:[YOUR-PASSWORD]@db.xxxx.supabase.co:5432/postgres`
-    *   **Action**: Copy this string and replace `[YOUR-PASSWORD]` with the password you created in step 2. **Keep this safe.**
+    *   **⚠️ IMPORTANT**: If your password contains special characters (like `@`, `:`, `/`, `#`), you must URL-encode them. 
+        *   `@` becomes `%40`
+        *   `#` becomes `%23`
+        *   For example: `Pass#123` becomes `Pass%23123`.
+    *   **Keep this safe.**
+
+### ⚠️ Troubleshooting: "Network is unreachable"
+If Render gives a `Network is unreachable` error, it is because it is trying to connect via IPv6. **Switch to the Connection Pooler (IPv4):**
+1.  In Supabase, go to **Project Settings** -> **Database** -> **Connection Pooler**.
+2.  Enable the pooler if it's not on.
+3.  Choose **Session Mode** (This is best for our FastAPI/SQLAlchemy setup).
+4.  Copy the **pooler connection string** (It will likely use port 5432 or 6543).
+    *   **Note**: The username must be the one that looks like `postgres.[project-ref]`.
+5.  Use **THIS** string (remember to URL-encode your password!) in Render.
+
 ---
 
 ## 🖥 Part 2: Deploy the Backend (Render)
