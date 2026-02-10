@@ -41,19 +41,14 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   @override
-  void initState() {
-    super.initState();
-    // Simulate splash delay or wait for auth load
-    Future.delayed(const Duration(seconds: 2), () {});
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Consumer<AuthService>(
       builder: (context, auth, _) {
+        // Show Splash Screen while authentication status is being determined
         if (auth.isLoading) {
-           return const SplashScreen(); // Or a loading spinner
+           return const SplashScreen();
         }
+        // Once loaded, decide where to go
         return auth.isAuthenticated ? const DashboardPage() : const LoginScreen();
       },
     );

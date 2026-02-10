@@ -586,6 +586,46 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     }
   }
 
+  Widget _buildAppBarIconButton({
+    required IconData icon, 
+    required String tooltip, 
+    required VoidCallback? onPressed,
+    bool isLoading = false
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark.withOpacity(0.6),
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.cardBorder.withOpacity(0.3)),
+      ),
+      child: IconButton(
+        icon: isLoading 
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : Icon(icon, color: Colors.white, size: 20),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildMapControlBtn(IconData icon, VoidCallback onTap, {bool isDestructive = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark.withOpacity(0.9),
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.cardBorder.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: isDestructive ? AppColors.error : Colors.white),
+        onPressed: onTap,
+      ),
+    );
+  }
+
   Future<void> _resetEverything() async {
     setState(() {
       if (_isCollecting) _toggleCollection();
