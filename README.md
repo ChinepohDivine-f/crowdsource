@@ -8,8 +8,8 @@ A professional Mobile-to-Cloud crowdsensing system designed for cellular network
 -   **GPS Integration**: Automatically tags every measurement with high-precision GPS coordinates.
 -   **Interactive Map**: Visualizes collected data points on an OpenStreetMap with color-coded markers (Red for coverage holes, Green for good signal).
 -   **User Management**: Role-based authentication (Admin/User) and user-specific data tracking.
--   **Admin Panel**: Web-based dashboard for managing users and viewing global network statistics.
--   **Automated Sync**: Periodically synchronizes local data with a central cloud database.
+-   **Admin Panel**: Web-based dashboard for managing users and viewing global network statistics. Access at `http://localhost:8000/view/login`.
+-   **Automated Sync**: The mobile app caches data offline and allows manual syncing to the central cloud database.
 -   **Analytics**: Backend logic to identify "Coverage Holes" where signal strength drops below functional thresholds.
 
 ## 🏗 How it was Made (Architecture)

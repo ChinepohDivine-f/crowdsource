@@ -160,9 +160,10 @@ Testing was conducted on a Google Pixel 7 (Client) and Render Free Tier (Server)
 | **Storage Usage** | 0.8 MB / 1k records | < 1 MB / 1k records | ✅ Pass |
 
 ### 3.3 Visual Analytics
-The backend dashboard provides clear insights:
+The backend admin dashboard (`/view/login`) provides clear insights:
 *   **Signal Distribution**: A histogram showing the spread of RSRP values helps identify general network health.
-*   **Heatmaps**: Spatial aggregation effectively highlights "dead zones" (Red) versus "good coverage" (Green).
+*   **Spatial Heatmaps**: Interactive OpenStreetMap visualization effectively highlights "dead zones" (Red) versus "good coverage" (Green).
+*   **ML Predictions**: A Random Forest model predicts signal coverage in unmeasured areas based on spatial interpolation.
 
 ---
 
@@ -177,9 +178,10 @@ The backend dashboard provides clear insights:
 *   **iOS Support**: The current native bridge implementation is Android-only. iOS requires a separate Swift implementation of `CoreTelephony`.
 *   **5G SA vs NSA**: The current model treats all 5G as a single type, distinguishing between Standalone (true 5G) and Non-Standalone (LTE-anchored) would provide richer data.
 
-### 4.3 Future Work
-*   **Crowdsourced Anomaly Detection**: Implement clustering algorithms to automatically flag tower outages when multiple devices report sudden signal drops in the same area.
-*   **Predictive AI**: Use Long Short-Term Memory (LSTM) networks to predict coverage based on time of day (network load).
+### 4.3 Future Work (Partially Implemented)
+*   **Crowdsourced Anomaly Detection**: Clustering algorithms (DBSCAN) now automatically flag tower outages when multiple devices report sudden signal drops.
+*   **Predictive AI**: Initial Random Forest implementation allows for basic signal coverage prediction.
+*   **Advanced Prediction**: Future upgrades could use Long Short-Term Memory (LSTM) networks to predict coverage based on time of day (network load).
 
 ---
 
