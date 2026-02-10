@@ -7,7 +7,9 @@ import '../models/user.dart';
 
 class AuthService with ChangeNotifier {
   // Base URL for production
-  static const String baseUrl = 'https://crowdsource-backend-3ixx.onrender.com/api/v1/auth';
+  // Base URL: Use 10.0.2.2 for Android Emulator, localhost for iOS Simulator
+  static const String baseUrl = 'http://10.0.2.2:8000/api/v1/auth';
+  // static const String baseUrl = 'http://localhost:8000/api/v1/auth'; // For iOS/Web
   
   final _storage = const FlutterSecureStorage();
   String? _token;

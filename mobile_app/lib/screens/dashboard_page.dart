@@ -321,231 +321,113 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
             ),
           ),
 
-          // Legend Overlay
-          Positioned(
-            top: 120,
-            left: 16,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceDark.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.cardBorder),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Signal Quality', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                  const SizedBox(height: 8),
-                  _buildLegendItem(Colors.green, 'Excellent (> -90)'),
-                  const SizedBox(height: 4),
-                  _buildLegendItem(Colors.lightGreen, 'Good (> -105)'),
-                  const SizedBox(height: 4),
-                  _buildLegendItem(Colors.yellow, 'Fair (> -115)'),
-                  const SizedBox(height: 4),
-                  _buildLegendItem(Colors.red, 'Poor (< -115)'),
-                ],
-              ),
-            ),
-          ),
-          
-          // Collecting Indicator
-          if (_isCollecting)
+          // Floating Network Type Badge (Top Right)
+          if (_currentInfo != null)
             Positioned(
-              top: 120,
+              top: 100, // Below AppBar
               right: 16,
-              child: FadeTransition(
-                opacity: _fadeController.drive(CurveTween(curve: Curves.easeInOut)), 
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(color: Colors.red.withOpacity(0.5), blurRadius: 10, spreadRadius: 1),
-                    ],
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.fiber_manual_record, color: Colors.white, size: 14),
-                      SizedBox(width: 8),
-                      Text('REC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _getSignalColor(_currentInfo!['rsrp'] ?? -140),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
+                  ],
                 ),
-              ),
-            ),
-
-          // Bottom Stats Panel
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceDark.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppColors.cardBorder.withOpacity(0.5)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, 10)),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Stats Row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildStatColumn('NET', _currentInfo?['type'] ?? '-', Icons.cell_tower),
-                        _buildVerticalDivider(),
-                        _buildStatColumn('RSRP', '${_currentInfo?['rsrp'] ?? '-'}', Icons.signal_cellular_alt),
-                        _buildVerticalDivider(),
-                        _buildStatColumn('SINR', '${_currentInfo?['sinr'] ?? '-'}', Icons.graphic_eq),
-                        _buildVerticalDivider(),
-                        _buildStatColumn('RSRQ', '${_currentInfo?['rsrq'] ?? '-'}', Icons.speed),
-                        _buildVerticalDivider(),
-                         _buildStatColumn('RSSI', '${_currentInfo?['rssi'] ?? '-'}', Icons.wifi_tethering),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // Action Button
-                    Container(
-                      height: 50,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: _isCollecting 
-                          ? LinearGradient(colors: [Colors.red.shade700, Colors.red.shade900])
-                          : AppColors.primaryGradient,
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_isCollecting ? Colors.red : AppColors.primaryBlue).withOpacity(0.4),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _toggleCollection,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: Text(
-                          _isCollecting ? 'STOP' : 'START',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.2,
-                            color: Colors.white,
-                          ),
-                        ),
+                    const Icon(Icons.network_cell, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      _currentInfo!['type'] ?? 'Unknown',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
+
+          // Horizontal Metrics Scroll View (Bottom)
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              height: 140, // Height for scroll view
+              margin: const EdgeInsets.only(bottom: 20),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                   _buildFloatingMetricCard('RSRP', '${_currentInfo?['rsrp'] ?? '-'}', 'dBm', _getSignalColor(_currentInfo?['rsrp'] ?? -140)),
+                   _buildFloatingMetricCard('RSRQ', '${_currentInfo?['rsrq'] ?? '-'}', 'dB', Colors.blueGrey),
+                   _buildFloatingMetricCard('SINR', '${_currentInfo?['sinr'] ?? '-'}', 'dB', Colors.teal),
+                   _buildFloatingMetricCard('RSSI', '${_currentInfo?['rssi'] ?? '-'}', 'dBm', Colors.orange),
+                   _buildFloatingMetricCard('CID', '${_currentInfo?['cellId'] ?? '-'}', '', Colors.purple),
+                   
+                   // Start/Stop Button as a Card at the end
+                   Container(
+                     margin: const EdgeInsets.only(right: 12, bottom: 8, top: 8),
+                     width: 100,
+                     child: ElevatedButton(
+                        onPressed: _toggleCollection,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isCollecting ? Colors.red : AppColors.primaryBlue,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 6,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(_isCollecting ? Icons.stop : Icons.play_arrow, size: 32),
+                            const SizedBox(height: 4),
+                            Text(_isCollecting ? 'STOP' : 'START', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ],
+                        ),
+                     ),
+                   ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildVerticalDivider() {
+  Widget _buildFloatingMetricCard(String label, String value, String unit, Color color) {
     return Container(
-      height: 30,
-      width: 1,
-      color: AppColors.divider,
-    );
-  }
-
-  Widget _buildStatColumn(String label, String value, IconData icon) {
-    return Expanded( // Ensure equal spacing
-      child: Column(
-        children: [
-          Icon(icon, color: AppColors.textSecondary, size: 16),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textTertiary,
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAppBarIconButton({
-    required IconData icon, 
-    required String tooltip, 
-    required VoidCallback? onPressed,
-    bool isLoading = false
-  }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceDark.withOpacity(0.6),
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.cardBorder.withOpacity(0.3)),
-      ),
-      child: IconButton(
-        icon: isLoading 
-          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-          : Icon(icon, color: Colors.white, size: 20),
-        tooltip: tooltip,
-        onPressed: onPressed,
-      ),
-    );
-  }
-
-  Widget _buildMapControlBtn(IconData icon, VoidCallback onTap, {bool isDestructive = false}) {
-    return Container(
+      width: 100,
+      margin: const EdgeInsets.only(right: 12, bottom: 8, top: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surfaceDark.withOpacity(0.9),
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.cardBorder.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.5), width: 2),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8),
+          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 4)),
         ],
       ),
-      child: IconButton(
-        icon: Icon(icon, color: isDestructive ? AppColors.error : Colors.white),
-        onPressed: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
+          if (unit.isNotEmpty)
+             Text(unit, style: const TextStyle(color: AppColors.textTertiary, fontSize: 10)),
+        ],
       ),
     );
   }
 
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.location_pin, color: color, size: 14),
-        const SizedBox(width: 8),
-        Text(label, style: const TextStyle(color: Colors.white, fontSize: 10)),
-      ],
-    );
-  }
+  // Helper method removed (replaced by direct usage in build)
+  // Widget _buildLegendItem...
+
   
   // Drawer to house extra options like "Change Name" and "Help" to declutter UI
   Widget _buildDrawer() {
