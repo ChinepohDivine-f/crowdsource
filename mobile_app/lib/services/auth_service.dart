@@ -15,22 +15,32 @@ class AuthService with ChangeNotifier {
   String? _token;
   User? _currentUser;
   bool _isLoading = false;
+  bool _isInitialized = false;
+  String? _errorMessage;
 
   bool get isAuthenticated => _token != null && !JwtDecoder.isExpired(_token!);
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
+  bool get isInitialized => _isInitialized;
+  String? get errorMessage => _errorMessage;
   String? get token => _token;
 
   Future<void> loadUser() async {
-    _token = await _storage.read(key: 'jwt_token');
-    if (_token != null) {
-      if (JwtDecoder.isExpired(_token!)) {
-        await logout();
-      } else {
-        await _fetchUserProfile();
+    try {
+      _token = await _storage.read(key: 'jwt_token');
+      if (_token != null) {
+        if (JwtDecoder.isExpired(_token!)) {
+          await logout();
+        } else {
+          await _fetchUserProfile();
+        }
       }
+    } catch (e) {
+      debugPrint("Initialization error: $e");
+    } finally {
+      _isInitialized = true;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   Future<void> _fetchUserProfile() async {
@@ -45,23 +55,24 @@ class AuthService with ChangeNotifier {
         _currentUser = User.fromJson(jsonDecode(response.body));
         notifyListeners();
       } else {
-        // Token might be invalid despite expiration check
         await logout();
       }
     } catch (e) {
-      print("Error fetching user profile: $e");
+      debugPrint("Error fetching user profile: $e");
     }
   }
 
   Future<bool> login(String email, String password) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
+      debugPrint("Attempting login for: $email");
       final response = await http.post(
-        Uri.parse('$baseUrl/token'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {'username': email, 'password': password},
+          Uri.parse('$baseUrl/token'),
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: {'username': email, 'password': password},
       );
 
       if (response.statusCode == 200) {
@@ -69,16 +80,21 @@ class AuthService with ChangeNotifier {
         _token = data['access_token'];
         await _storage.write(key: 'jwt_token', value: _token);
         await _fetchUserProfile();
+        debugPrint("Login success for: $email");
         _isLoading = false;
         notifyListeners();
         return true;
       } else {
+        final errorBody = jsonDecode(response.body);
+        _errorMessage = errorBody['detail'] ?? "Unauthorized access denied";
+        debugPrint("Login failed [${response.statusCode}]: $_errorMessage");
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      print("Login error: $e");
+      _errorMessage = "Network error. Please check your connection.";
+      debugPrint("Login network error: $e");
       _isLoading = false;
       notifyListeners();
       return false;

@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (!success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Login failed. Please check your credentials.'),
+            content: Text(authService.errorMessage ?? 'Login failed. Please check your credentials.'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -222,6 +222,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ),
                                   validator: (value) => value!.isEmpty ? 'Please enter your password' : null,
                                 ),
+                                
+                                // Error Message Display
+                                Consumer<AuthService>(
+                                  builder: (context, auth, _) {
+                                    if (auth.errorMessage != null) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 16.0),
+                                        child: Text(
+                                          auth.errorMessage!,
+                                          style: const TextStyle(
+                                            color: AppColors.error,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+                                
                                 const SizedBox(height: 32),
                                 
                                 // Login Button

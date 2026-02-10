@@ -388,13 +388,13 @@ def view_login():
                         errBox.style.display = 'block';
                         btn.innerHTML = '<i class="fas fa-lock"></i> Authorize';
                         btn.disabled = false;
-                    }
-                } catch(err) { 
+                    }}
+                }} catch(err) {{ 
                     alert('Backend Connection Error'); 
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-lock"></i> Authorize';
-                }
-            }
+                }}
+            }}
         </script>
     </body>
     </html>

@@ -45,7 +45,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     return Consumer<AuthService>(
       builder: (context, auth, _) {
         // Show Splash Screen while authentication status is being determined
-        if (auth.isLoading) {
+        if (!auth.isInitialized) {
            return const SplashScreen();
         }
         // Once loaded, decide where to go
