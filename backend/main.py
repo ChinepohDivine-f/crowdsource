@@ -46,9 +46,19 @@ app.add_middleware(SlowAPIMiddleware)
 # Create tables and ensure schema is up to date
 try:
     models.Base.metadata.create_all(bind=database.engine)
-    # Manual check for 'username' column in case table existed before change
+    # Manual check and sync for columns that might be missing in an existing DB
     with database.engine.connect() as conn:
+        # User Table
         conn.execute(text("ALTER TABLE core_user ADD COLUMN IF NOT EXISTS username VARCHAR"))
+        conn.execute(text("ALTER TABLE core_user ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'USER'"))
+        conn.execute(text("ALTER TABLE core_user ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
+        
+        # Device Table
+        conn.execute(text("ALTER TABLE core_device ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES core_user(id)"))
+        
+        # Measurement Table
+        conn.execute(text("ALTER TABLE core_networkmeasurement ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES core_user(id)"))
+        
         conn.commit()
     logger.info("Database schema synchronized.")
 except Exception as e:
@@ -468,6 +478,7 @@ def read_root():
         }
 
         fetch('/api/v1/measurements/').then(r => r.json()).then(data => {
+            if (!Array.isArray(data)) return console.error("Measurements data is not an array:", data);
             document.getElementById('stat-count').innerText = data.length;
             let sum = 0;
             data.forEach(m => {
@@ -486,6 +497,7 @@ def read_root():
         });
         
         fetch('/api/v1/analytics/heatmap').then(r => r.json()).then(data => {
+            if (!Array.isArray(data)) return console.error("Heatmap data is not an array:", data);
             data.forEach(d => {
                 var color = d.val < -110 ? '#ff0000' : (d.val < -95 ? '#ffff00' : '#00ff00');
                 var bounds = [[d.lat - 0.001, d.lon - 0.001], [d.lat + 0.001, d.lon + 0.001]];
