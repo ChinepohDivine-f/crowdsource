@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Security
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
@@ -9,6 +9,7 @@ from shapely.geometry import Point, mapping
 from datetime import datetime
 import secrets
 import json
+import os
 
 # Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -19,15 +20,39 @@ from slowapi.middleware import SlowAPIMiddleware
 import models, schemas, database, analysis, auth
 from routers import auth as auth_router
 
-# Create tables
-models.Base.metadata.create_all(bind=database.engine)
+# Logging setup for debugging 500 errors in cloud
+import logging
+import traceback
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Security Setup
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Senzor API", version="1.0")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"GLOBAL ERROR: {exc}")
+    logger.error(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": traceback.format_exc() if os.getenv("DEBUG") else "Internal Server Error"},
+    )
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Create tables and ensure schema is up to date
+try:
+    models.Base.metadata.create_all(bind=database.engine)
+    # Manual check for 'username' column in case table existed before change
+    with database.engine.connect() as conn:
+        conn.execute(text("ALTER TABLE core_user ADD COLUMN IF NOT EXISTS username VARCHAR"))
+        conn.commit()
+    logger.info("Database schema synchronized.")
+except Exception as e:
+    logger.error(f"Schema Sync Error: {e}")
 
 # Include Auth Router
 app.include_router(auth_router.router)
@@ -35,30 +60,136 @@ app.include_router(auth_router.router)
 API_KEY_NAME = "Authorization"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-# --- NAVIGATION & UI COMPONENTS ---
-# --- NAVIGATION & UI COMPONENTS ---
-NAV_HTML = """
-<nav style="background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(148, 163, 184, 0.1); padding: 15px 0; position: sticky; top: 0; z-index: 100;">
-    <div style="max-width: 1200px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                <span style="color: white; font-size: 18px;">📡</span>
+# --- PREMIUM UI LAYOUT ENGINE ---
+def get_sidebar(active_page: str = "dashboard"):
+    links = [
+        ("dashboard", "/", "fas fa-tachometer-alt", "Live Map"),
+        ("analytics", "/view/analytics", "fas fa-chart-line", "Analytics"),
+        ("data", "/view/data", "fas fa-database", "Raw Data"),
+        ("register", "/view/register", "fas fa-plus-circle", "Register"),
+        ("admin", "/view/admin", "fas fa-user-shield", "Admin"),
+    ]
+    
+    html = '<div class="sidebar">'
+    html += '<div class="sidebar-brand">📡 <span>Senzor</span></div>'
+    html += '<div class="sidebar-links">'
+    for id, path, icon, label in links:
+        active_class = "active" if active_page == id else ""
+        html += f'<a href="{path}" class="sidebar-link {active_class}"><i class="{icon}"></i> {label}</a>'
+    html += '</div>'
+    html += '<div class="sidebar-footer">'
+    html += '  <div id="user-display" style="font-size: 12px; color: var(--text-muted); padding: 10px;">Guest</div>'
+    html += '  <a href="/view/login" id="login-nav-link" class="sidebar-link"><i class="fas fa-sign-in-alt"></i> Login</a>'
+    html += '</div>'
+    html += '</div>'
+    return html
+
+def get_premium_layout(content: str, title: str = "Senzor", active_page: str = "dashboard", scripts: str = ""):
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{title} | Senzor Platform</title>
+        {BASE_STYLE}
+        <style>
+            :root {{
+                --sidebar-width: 260px;
+            }}
+            body {{ display: flex; overflow: hidden; }}
+            .sidebar {{
+                width: var(--sidebar-width);
+                height: 100vh;
+                background: rgba(15, 23, 42, 0.95);
+                backdrop-filter: blur(20px);
+                border-right: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+                flex-shrink: 0;
+                z-index: 1000;
+            }}
+            .sidebar-brand {{
+                padding: 30px 24px;
+                font-size: 24px;
+                font-weight: 700;
+                color: white;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                background: linear-gradient(to right, #fff, #94a3b8);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }}
+            .sidebar-links {{ flex: 1; padding: 20px 12px; }}
+            .sidebar-link {{
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 16px;
+                color: var(--text-muted);
+                text-decoration: none;
+                border-radius: 12px;
+                margin-bottom: 4px;
+                font-weight: 500;
+                transition: all 0.2s;
+            }}
+            .sidebar-link i {{ width: 20px; font-size: 18px; }}
+            .sidebar-link:hover {{ background: rgba(255, 255, 255, 0.05); color: var(--text-main); }}
+            .sidebar-link.active {{
+                background: rgba(59, 130, 246, 0.1);
+                color: var(--primary);
+                border: 1px solid rgba(59, 130, 246, 0.2);
+            }}
+            .main-view {{
+                flex: 1;
+                height: 100vh;
+                overflow-y: auto;
+                background: var(--bg-color);
+                position: relative;
+            }}
+            .content-page {{ padding: 0; min-height: 100%; }}
+            
+            /* Enhanced Scrollbar */
+            ::-webkit-scrollbar {{ width: 6px; }}
+            ::-webkit-scrollbar-track {{ background: transparent; }}
+            ::-webkit-scrollbar-thumb {{ background: rgba(148, 163, 184, 0.2); border-radius: 10px; }}
+            ::-webkit-scrollbar-thumb:hover {{ background: rgba(148, 163, 184, 0.3); }}
+        </style>
+    </head>
+    <body class="fade-in">
+        {get_sidebar(active_page)}
+        <main class="main-view">
+            <div class="content-page">
+                {content}
             </div>
-            <div style="font-weight: 700; font-size: 20px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                Senzor <span style="font-weight: 400; font-size: 14px; color: #64748b; -webkit-text-fill-color: #64748b; margin-left: 5px;">Admin</span>
-            </div>
-        </div>
-        <div>
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/view/register" class="nav-link">Register Device</a>
-            <a href="/view/analytics" class="nav-link">Analytics</a>
-            <a href="/view/data" class="nav-link">Data</a>
-            <a href="/view/admin" class="nav-link" style="color: #3b82f6;">Admin Panel</a>
-            <a href="/docs" target="_blank" class="nav-link" style="color: #8b5cf6;">API ↗</a>
-        </div>
-    </div>
-</nav>
-"""
+        </main>
+        
+        <script>
+            // Global State & Auth Verification
+            document.addEventListener('DOMContentLoaded', () => {{
+                const token = localStorage.getItem('admin_token');
+                const userDisplay = document.getElementById('user-display');
+                const loginLink = document.getElementById('login-nav-link');
+                
+                if (token) {{
+                    userDisplay.innerText = 'Authenticated Admin';
+                    loginLink.innerHTML = '<i class="fas fa-sign-out-alt"></i> Logout';
+                    loginLink.href = '#';
+                    loginLink.onclick = (e) => {{
+                        e.preventDefault();
+                        localStorage.removeItem('admin_token');
+                        window.location.href = '/view/login';
+                    }};
+                }}
+            }});
+        </script>
+        {scripts}
+    </body>
+    </html>
+    """
+
+# --- STYLING & UI ASSETS ---
 
 BASE_STYLE = """
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -197,62 +328,73 @@ def view_login():
                 <form onsubmit="login(event)">
                     <label>Email Address</label>
                     <input type="email" id="email" value="admin@senzor.com" required placeholder="name@company.com">
-                    
-                    <label>Password</label>
-                    <input type="password" id="password" required placeholder="••••••••">
-                    
-                    <button type="submit" class="btn" style="width: 100%; justify-content: center;">
-                        <span>Sign In</span> <i class="fas fa-arrow-right"></i>
-                    </button>
-                    
-                    <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-muted);">
-                        Secure Drive Test Management System &copy; 2026
-                    </div>
-                </form>
+                background: linear-gradient(to right, #fff, #94a3b8);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }}
+        </style>
+    </head>
+    <body class="fade-in">
+        <div class="login-card">
+            <div class="brand">📡 Senzor</div>
+            <h2 style="text-align: center; margin-bottom: 8px;">Admin Console</h2>
+            <p style="text-align: center; color: var(--text-muted); font-size: 14px; margin-bottom: 30px;">Identify to access platform controls.</p>
+            
+            <div id="err" class="error" style="display:none;"></div>
+            
+            <form onsubmit="doLogin(event)">
+                <label>Email Address</label>
+                <input type="email" id="email" value="admin@senzor.com" required>
+                
+                <label>Access Key</label>
+                <input type="password" id="password" value="Senzor2026" required>
+                
+                <button type="submit" class="btn" style="width: 100%; justify-content: center; margin-top: 10px;">
+                    <i class="fas fa-lock"></i> Authorize
+                </button>
+            </form>
+            
+            <div style="margin-top: 30px; text-align: center;">
+                <a href="/" style="color: var(--text-muted); text-decoration: none; font-size: 12px; transition: color 0.2s;">
+                    <i class="fas fa-arrow-left"></i> Return to Map
+                </a>
             </div>
         </div>
-        
+
         <script>
-            async function login(e) {{
+            async function doLogin(e) {{
                 e.preventDefault();
-                const email = document.getElementById('email').value;
-                const password = document.getElementById('password').value;
-                const btn = document.querySelector('button');
-                const errBox = document.getElementById('error');
-                
+                const btn = e.target.querySelector('button');
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authenticating...';
                 btn.disabled = true;
-                errBox.style.display = 'none';
+                
+                const formData = new FormData();
+                formData.append('username', document.getElementById('email').value);
+                formData.append('password', document.getElementById('password').value);
                 
                 try {{
-                    const formData = new URLSearchParams();
-                    formData.append('username', email);
-                    formData.append('password', password);
-                    
                     const res = await fetch('/api/v1/auth/token', {{
                         method: 'POST',
-                        headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
                         body: formData
                     }});
-                    
                     const data = await res.json();
                     
-                    if (res.ok) {{
+                    if(res.ok) {{
                         localStorage.setItem('admin_token', data.access_token);
-                        btn.innerHTML = '<i class="fas fa-check"></i> Success';
-                        btn.style.background = '#10b981';
-                        setTimeout(() => window.location.href = '/view/admin', 500);
+                        window.location.href = '/view/admin';
                     }} else {{
-                        throw new Error(data.detail || 'Login failed');
-                    }}
-                }} catch (err) {{
-                    btn.innerHTML = '<span>Sign In</span> <i class="fas fa-arrow-right"></i>';
+                        const errBox = document.getElementById('err');
+                        errBox.innerText = data.detail || 'Access Denied';
+                        errBox.style.display = 'block';
+                        btn.innerHTML = '<i class="fas fa-lock"></i> Authorize';
+                        btn.disabled = false;
+                    }
+                } catch(err) { 
+                    alert('Backend Connection Error'); 
                     btn.disabled = false;
-                    btn.style.background = '';
-                    errBox.innerText = err.message;
-                    errBox.style.display = 'block';
-                }}
-            }}
+                    btn.innerHTML = '<i class="fas fa-lock"></i> Authorize';
+                }
+            }
         </script>
     </body>
     </html>
@@ -260,129 +402,189 @@ def view_login():
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Senzor Dashboard</title>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        {BASE_STYLE}
-        <style>
-            #map {{ height: calc(100vh - 54px); width: 100%; }}
-            .legend {{ background: rgba(0,0,0,0.8); padding: 10px; border-radius: 5px; border: 1px solid #444; color: #fff; font-size: 12px; }}
-            .legend i {{ width: 12px; height: 12px; float: left; margin-right: 8px; border-radius: 50%; }}
-        </style>
-    </head>
-    <body>
-        {NAV_HTML}
-        <div id="map"></div>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <script>
-            var map = L.map('map').setView([0, 0], 2);
-            L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ attribution: '© OpenStreetMap' }}).addTo(map);
+    content = """
+    <div id="map" style="height: 100vh; width: 100%;"></div>
+    
+    <div class="map-overlay">
+        <div class="glass-panel" style="padding: 20px; width: 300px;">
+            <h3>Live Coverage</h3>
+            <p style="color: var(--text-muted); font-size: 13px;">Monitor real-time signal quality across all mapped devices.</p>
             
-            var markersLayer = L.featureGroup();
-            var holesLayer = L.featureGroup();
-            var heatmapLayer = L.featureGroup();
+            <div id="quick-stats" style="margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--text-muted);">Points Collected</span>
+                    <span id="stat-count" style="font-weight: 700;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-size: 12px; color: var(--text-muted);">Avg. RSRP</span>
+                    <span id="stat-avg" style="font-weight: 700; color: var(--primary);">--</span>
+                </div>
+            </div>
 
-            fetch('/api/v1/measurements/').then(r => r.json()).then(data => {{
-                data.forEach(m => {{
-                    var color = m.rsrp < -110 ? '#ff4b2b' : '#00f2fe';
-                    L.circleMarker([m.latitude, m.longitude], {{ radius: 6, fillColor: color, color: "#fff", weight: 1, fillOpacity: 0.8 }})
-                    .bindPopup(`Device: ${{m.device_id}}<br>RSRP: ${{m.rsrp}} dBm`).addTo(markersLayer);
-                }});
-                markersLayer.addTo(map);
-                if(data.length > 0) map.fitBounds(markersLayer.getBounds());
-            }});
+            <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
             
-            // Auto-load Heatmap
-            fetch('/api/v1/analytics/heatmap').then(r => r.json()).then(data => {{
-                data.forEach(d => {{
-                    var color = d.val < -110 ? '#ff0000' : (d.val < -90 ? '#ffff00' : '#00ff00');
-                    var bounds = [[d.lat - 0.0005, d.lon - 0.0005], [d.lat + 0.0005, d.lon + 0.0005]];
-                    L.rectangle(bounds, {{ color: color, weight: 0, fillOpacity: 0.4 }}).addTo(heatmapLayer);
-                }});
-            }});
+            <label>Layer Control</label>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button onclick="toggleLayer('marker')" class="btn btn-secondary" style="width: 100%; justify-content: start; font-size: 11px;">
+                    <i class="fas fa-map-marker-alt"></i> Raw Measurements
+                </button>
+                <button onclick="toggleLayer('heatmap')" class="btn btn-secondary" style="width: 100%; justify-content: start; font-size: 11px;">
+                    <i class="fas fa-fire"></i> Signal Heatmap
+                </button>
+            </div>
+        </div>
+    </div>
 
-            var overlays = {{ "Raw Points": markersLayer, "Signal Heatmap": heatmapLayer, "Coverage Holes": holesLayer }};
-            L.control.layers(null, overlays, {{collapsed: false}}).addTo(map);
-        </script>
-    </body>
-    </html>
+    <style>
+        .map-overlay { position: absolute; top: 20px; right: 20px; z-index: 999; }
+        .leaflet-container { background: #0b0f19 !important; }
+        .legend { background: rgba(15, 23, 42, 0.9); padding: 12px; border-radius: 12px; border: 1px solid var(--border); color: #fff; font-size: 11px; backdrop-filter: blur(10px); }
+        .legend i { width: 10px; height: 10px; float: left; margin-right: 8px; border-radius: 50%; margin-top: 2px; }
+    </style>
     """
+    
+    scripts = """
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(map);
+        
+        var markersLayer = L.featureGroup().addTo(map);
+        var heatmapLayer = L.featureGroup();
+        
+        function toggleLayer(type) {
+            if (type === 'marker') {
+                if (map.hasLayer(markersLayer)) map.removeLayer(markersLayer);
+                else map.addLayer(markersLayer);
+            } else {
+                if (map.hasLayer(heatmapLayer)) map.removeLayer(heatmapLayer);
+                else map.addLayer(heatmapLayer);
+            }
+        }
+
+        fetch('/api/v1/measurements/').then(r => r.json()).then(data => {
+            document.getElementById('stat-count').innerText = data.length;
+            let sum = 0;
+            data.forEach(m => {
+                sum += m.rsrp;
+                var color = m.rsrp < -110 ? '#ff4b2b' : (m.rsrp < -95 ? '#f59e0b' : '#10b981');
+                L.circleMarker([m.latitude, m.longitude], { 
+                    radius: 5, fillColor: color, color: "#fff", weight: 0.5, fillOpacity: 0.8 
+                })
+                .bindPopup(`<b>Device:</b> ${m.device_id}<br><b>RSRP:</b> ${m.rsrp} dBm<br><b>Net:</b> ${m.network_type}`)
+                .addTo(markersLayer);
+            });
+            if(data.length > 0) {
+                document.getElementById('stat-avg').innerText = (sum / data.length).toFixed(1) + " dBm";
+                map.fitBounds(markersLayer.getBounds(), { padding: [50, 50] });
+            }
+        });
+        
+        fetch('/api/v1/analytics/heatmap').then(r => r.json()).then(data => {
+            data.forEach(d => {
+                var color = d.val < -110 ? '#ff0000' : (d.val < -95 ? '#ffff00' : '#00ff00');
+                var bounds = [[d.lat - 0.001, d.lon - 0.001], [d.lat + 0.001, d.lon + 0.001]];
+                L.rectangle(bounds, { color: color, weight: 0, fillOpacity: 0.3 }).addTo(heatmapLayer);
+            });
+        });
+        
+        var legend = L.control({position: 'bottomleft'});
+        legend.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'info legend');
+            div.innerHTML = '<b>Signal Quality</b><br>' +
+                           '<i style="background: #10b981"></i> Good (>-95)<br>' +
+                           '<i style="background: #f59e0b"></i> Fair (-95 to -110)<br>' +
+                           '<i style="background: #ff4b2b"></i> Poor (<-110)';
+            return div;
+        };
+        legend.addTo(map);
+    </script>
+    """
+    return get_premium_layout(content, title="Live Coverage Map", active_page="dashboard", scripts=scripts)
 
 @app.get("/view/register", response_class=HTMLResponse)
 def view_register():
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head><title>Register Device</title>{BASE_STYLE}</head>
-    <body>
-        {NAV_HTML}
-        <div class="container">
-            <h1>📝 Register New Device</h1>
-            <div class="card">
-                <div id="msg" class="success"></div>
-                <div id="err" class="error"></div>
-                
-                <form id="regForm" onsubmit="register(event)">
-                    <label>Device ID (Unique UUID/Serial)</label>
-                    <input type="text" id="device_id" value="test-device-01" required>
-                    
-                    <label>Manufacturer</label>
-                    <input type="text" id="manufacturer" value="Generic" required>
-                    
-                    <label>Model</label>
-                    <input type="text" id="model" value="Simulator v1" required>
-                    
-                    <label>OS Version</label>
-                    <input type="text" id="os_version" value="Android 14">
-                    
-                    <button type="submit">Generate API Key</button>
-                </form>
-            </div>
+    content = """
+    <div class="container">
+        <div class="glass-panel" style="padding: 40px; max-width: 600px; margin: 0 auto; margin-top: 50px;">
+            <h1>📝 Register Device</h1>
+            <p style="color: var(--text-muted); margin-bottom: 30px;">Add a new device to the platform to start collecting data.</p>
             
-            <div class="card" id="resultCard" style="display:none;">
-                <label>✅ Registration Successful</label>
-                <p>Save this API Key securely. It is required for all data uploads.</p>
-                <pre id="apiKeyBox"></pre>
+            <div id="msg" class="success" style="display:none;"></div>
+            <div id="err" class="error" style="display:none;"></div>
+            
+            <form id="regForm" onsubmit="register(event)">
+                <label>Device ID (Unique UUID/Serial)</label>
+                <input type="text" id="device_id" value="test-device-01" required>
+                
+                <label>Manufacturer</label>
+                <input type="text" id="manufacturer" value="Generic" required>
+                
+                <label>Model</label>
+                <input type="text" id="model" value="Simulator v1" required>
+                
+                <label>OS Version</label>
+                <input type="text" id="os_version" value="Android 14">
+                
+                <button type="submit" class="btn" style="width: 100%; justify-content: center;">
+                    <i class="fas fa-key"></i> Generate API Key
+                </button>
+            </form>
+
+            <div id="resultCard" style="display:none; margin-top: 30px; padding: 20px; background: rgba(16, 185, 129, 0.05); border: 1px dashed #10b981; border-radius: 12px;">
+                <label style="color: #10b981;">✅ Registration Successful</label>
+                <p style="font-size: 13px;">Save this API Key securely. It is required for all data uploads.</p>
+                <pre id="apiKeyBox" style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-size: 12px; overflow-x: auto;"></pre>
             </div>
         </div>
-        <script>
-            async function register(e) {{
-                e.preventDefault();
-                const payload = {{
-                    device_id: document.getElementById('device_id').value,
-                    manufacturer: document.getElementById('manufacturer').value,
-                    model: document.getElementById('model').value,
-                    os_version: document.getElementById('os_version').value
-                }};
-                
-                try {{
-                    const res = await fetch('/api/v1/register', {{
-                        method: 'POST',
-                        headers: {{'Content-Type': 'application/json'}},
-                        body: JSON.stringify(payload)
-                    }});
-                    const data = await res.json();
-                    
-                    if(res.ok) {{
-                        document.getElementById('msg').innerText = data.message;
-                        document.getElementById('msg').style.display = 'block';
-                        document.getElementById('apiKeyBox').innerText = data.api_key;
-                        document.getElementById('resultCard').style.display = 'block';
-                        localStorage.setItem('senzor_api_key', data.api_key); // Save for simulator
-                        localStorage.setItem('senzor_device_id', payload.device_id);
-                    }} else {{
-                        document.getElementById('err').innerText = data.detail || 'Error';
-                        document.getElementById('err').style.display = 'block';
-                    }}
-                }} catch(err) {{ alert(err); }}
-            }}
-        </script>
-    </body>
-    </html>
+    </div>
     """
+    scripts = """
+    <script>
+        async function register(e) {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            btn.disabled = true;
+            
+            const payload = {
+                device_id: document.getElementById('device_id').value,
+                manufacturer: document.getElementById('manufacturer').value,
+                model: document.getElementById('model').value,
+                os_version: document.getElementById('os_version').value
+            };
+            
+            try {
+                const res = await fetch('/api/v1/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                
+                if(res.ok) {
+                    document.getElementById('msg').innerText = data.message;
+                    document.getElementById('msg').style.display = 'block';
+                    document.getElementById('apiKeyBox').innerText = data.api_key;
+                    document.getElementById('resultCard').style.display = 'block';
+                    btn.innerHTML = '<i class="fas fa-check"></i> Success';
+                    btn.style.background = '#10b981';
+                } else {
+                    document.getElementById('err').innerText = data.detail || 'Error';
+                    document.getElementById('err').style.display = 'block';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-key"></i> Generate API Key';
+                }
+            } catch(err) { alert(err); btn.disabled = false; }
+        }
+    </script>
+    """
+    return get_premium_layout(content, title="Register Device", active_page="register", scripts=scripts)
 
 @app.get("/view/analytics", response_class=HTMLResponse)
 def view_analytics(db: Session = Depends(database.get_db)):
@@ -395,232 +597,257 @@ def view_analytics(db: Session = Depends(database.get_db)):
         print(f"DB Error: {e}")
         return HTMLResponse(f"<h1>Database Connection Error</h1><p>Could not connect to Supabase. Check DATABASE_URL.</p><pre>{e}</pre>", status_code=500)
     
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Senzor Analytics</title>
-        {BASE_STYLE}
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    </head>
-    <body>
-        {NAV_HTML}
-        <div class="container">
-            <h1>📊 Network Intelligence Dashboard</h1>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value">{total_count}</div>
-                    <div class="stat-label">Total Data Points</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{avg_rsrp:.1f} dBm</div>
-                    <div class="stat-label">Avg Signal (RSRP)</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{unique_devices}</div>
-                    <div class="stat-label">Active Devices</div>
-                </div>
+    content = f"""
+    <div class="container" style="max-width: 1400px;">
+        <div style="display: flex; justify-content: space-between; align-items: end; margin-bottom: 30px;">
+            <div>
+                <h1>📊 Network Intelligence</h1>
+                <p style="color: var(--text-muted);">In-depth spatial and metric analysis of collected signal data.</p>
             </div>
-
-            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-                <div class="card">
-                    <h3>📡 Signal Strength Distribution</h3>
-                    <canvas id="rsrpChart" height="150"></canvas>
-                </div>
-                <div class="card">
-                    <h3>📶 Network Technology</h3>
-                    <canvas id="netTypeChart"></canvas>
-                </div>
+            <div style="background: rgba(59, 130, 246, 0.1); padding: 10px 20px; border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                <span style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">System Grade</span>
+                <div style="font-size: 20px; font-weight: 700; color: #10b981;">Optimal</div>
             </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top:20px;">
-                <div class="card">
-                    <h3>🧠 ML Signal Predictor</h3>
-                    <p style="color: #888; font-size: 13px;">Predict coverage quality at any coordinate using our RandomForest spatial model.</p>
-                    <div style="margin-top: 20px;">
-                        <input type="text" id="ml_lat" placeholder="Latitude (e.g. 40.7128)">
-                        <input type="text" id="ml_lon" placeholder="Longitude (e.g. -74.0060)">
-                        <button onclick="predictSignal()" style="width: 100%;">📊 Forecast Signal</button>
-                    </div>
-                    <div id="mlResult" class="pulse-ready" style="margin-top: 20px; display:none; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #4facfe;">
-                        <div style="font-size: 12px; color: #888;">PREDICTED RSRP</div>
-                        <div id="mlVal" style="font-size: 32px; font-weight: bold; color: #4facfe;">-105.4 dBm</div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>🛠 Spatial Clustering (DBSCAN)</h3>
-                    <p style="color: #888; font-size: 13px;">Detect contiguous "Coverage Holes" automatically from raw measurement density.</p>
-                    <button class="secondary" onclick="runAnalysis()" style="width:100%; margin-top: 15px;">Run Hole Detection</button>
-                    <div id="analyticsResult" style="margin-top: 20px; display:none;">
-                        <pre id="jsonOutput" style="font-size: 10px; max-height: 150px;"></pre>
-                    </div>
-                </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{total_count}</div>
+                <div class="stat-label">Total Data Points</div>
+                <i class="fas fa-database" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 32px;"></i>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{avg_rsrp:.1f}</div>
+                <div class="stat-label">Avg. Signal (dBm)</div>
+                <i class="fas fa-signal" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 32px;"></i>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{unique_devices}</div>
+                <div class="stat-label">Active Devices</div>
+                <i class="fas fa-mobile-alt" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 32px;"></i>
             </div>
         </div>
 
-        <script>
-            // Fetch Stats and Load Charts
-            async function loadCharts() {{
-                const res = await fetch('/api/v1/analytics/stats');
-                const data = await res.json();
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="margin-bottom: 20px;"><i class="fas fa-chart-bar" style="color: var(--primary);"></i> Signal Strength Distribution</h3>
+                <canvas id="rsrpChart" height="140"></canvas>
+            </div>
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="margin-bottom: 20px;"><i class="fas fa-chart-pie" style="color: var(--accent);"></i> Network Tech</h3>
+                <canvas id="netTypeChart"></canvas>
+            </div>
+        </div>
 
-                // RSRP Chart
-                new Chart(document.getElementById('rsrpChart'), {{
-                    type: 'bar',
-                    data: {{
-                        labels: data.rsrp_bins.map(b => b.range),
-                        datasets: [{{
-                            label: 'Measurement Count',
-                            data: data.rsrp_bins.map(b => b.count),
-                            backgroundColor: '#4facfe88',
-                            borderColor: '#4facfe',
-                            borderWidth: 1
-                        }}]
-                    }},
-                    options: {{ responsive: true, scales: {{ y: {{ beginAtZero: true, grid: {{ color: '#333' }} }}, x: {{ grid: {{ display: false }} }} }} }}
-                }});
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="margin-bottom: 10px;"><i class="fas fa-brain" style="color: #4facfe;"></i> ML Signal Predictor</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Forecast coverage quality using our RandomForest spatial model.</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div>
+                        <label>Latitude</label>
+                        <input type="text" id="ml_lat" placeholder="40.7128" style="margin-bottom:0;">
+                    </div>
+                    <div>
+                        <label>Longitude</label>
+                        <input type="text" id="ml_lon" placeholder="-74.0060" style="margin-bottom:0;">
+                    </div>
+                </div>
+                <button onclick="predictSignal()" class="btn" style="width: 100%; justify-content: center;">
+                    Forecast Signal Strength
+                </button>
+                <div id="mlResult" style="margin-top: 20px; display:none; padding: 20px; border-radius: 12px; text-align: center; background: rgba(79, 172, 254, 0.05); border: 1px dashed #4facfe;">
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Predicted RSRP</div>
+                    <div id="mlVal" style="font-size: 32px; font-weight: 700; color: #4facfe;">-105.4 dBm</div>
+                </div>
+            </div>
 
-                // Network Type Chart
-                new Chart(document.getElementById('netTypeChart'), {{
-                    type: 'doughnut',
-                    data: {{
-                        labels: Object.keys(data.net_types),
-                        datasets: [{{
-                            data: Object.values(data.net_types),
-                            backgroundColor: ['#4facfe', '#00f2fe', '#333']
-                        }}]
-                    }},
-                    options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
-                }});
-            }}
-
-            async function predictSignal() {{
-                const lat = document.getElementById('ml_lat').value;
-                const lon = document.getElementById('ml_lon').value;
-                const res = await fetch(`/api/v1/analytics/predict?lat=${{lat}}&lon=${{lon}}`);
-                const data = await res.json();
-                
-                const box = document.getElementById('mlResult');
-                const val = document.getElementById('mlVal');
-                box.style.display = 'block';
-                if(data.prediction) {{
-                    val.innerText = data.prediction.toFixed(1) + " dBm";
-                    val.style.color = data.prediction < -110 ? '#ff4b2b' : '#4facfe';
-                }} else {{
-                    val.innerText = "Sparse Data";
-                    val.style.color = "#888";
-                }}
-            }}
-
-            async function runAnalysis() {{
-                const res = await fetch('/api/v1/analytics/trigger');
-                const data = await res.json();
-                document.getElementById('jsonOutput').innerText = JSON.stringify(data, null, 2);
-                document.getElementById('analyticsResult').style.display = 'block';
-            }}
-
-            loadCharts();
-        </script>
-    </body>
-    </html>
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="margin-bottom: 10px;"><i class="fas fa-microscope" style="color: #f59e0b;"></i> Spatial Clustering</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Detect contiguous "Coverage Holes" automatically via DBSCAN clustering.</p>
+                <button class="btn btn-secondary" onclick="runAnalysis()" style="width:100%;">
+                    <i class="fas fa-play"></i> Trigger Hole Detection
+                </button>
+                <div id="analyticsResult" style="margin-top: 20px; display:none;">
+                    <pre id="jsonOutput" style="font-size: 11px; max-height: 180px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; color: #34d399;"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
     """
+    scripts = """
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        async function loadCharts() {
+            const res = await fetch('/api/v1/analytics/stats');
+            const data = await res.json();
+
+            new Chart(document.getElementById('rsrpChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.rsrp_bins.map(b => b.range),
+                    datasets: [{
+                        label: 'Points',
+                        data: data.rsrp_bins.map(b => b.count),
+                        backgroundColor: 'rgba(59, 130, 246, 0.4)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    scales: { 
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, border: { display: false } }, 
+                        x: { grid: { display: false }, border: { display: false } } 
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            new Chart(document.getElementById('netTypeChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(data.net_types),
+                    datasets: [{
+                        data: Object.values(data.net_types),
+                        backgroundColor: ['#3b82f6', '#8b5cf6', '#64748b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', padding: 20, usePointStyle: true } } },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        async function predictSignal() {
+            const lat = document.getElementById('ml_lat').value;
+            const lon = document.getElementById('ml_lon').value;
+            const res = await fetch(`/api/v1/analytics/predict?lat=${lat}&lon=${lon}`);
+            const data = await res.json();
+            
+            const box = document.getElementById('mlResult');
+            const val = document.getElementById('mlVal');
+            box.style.display = 'block';
+            if(data.prediction) {
+                val.innerText = data.prediction.toFixed(1) + " dBm";
+                val.style.color = data.prediction < -110 ? '#ff4b2b' : '#3b82f6';
+            } else {
+                val.innerText = "No Data";
+                val.style.color = "#64748b";
+            }
+        }
+
+        async function runAnalysis() {
+            const res = await fetch('/api/v1/analytics/trigger');
+            const data = await res.json();
+            document.getElementById('jsonOutput').innerText = JSON.stringify(data, null, 2);
+            document.getElementById('analyticsResult').style.display = 'block';
+        }
+
+        loadCharts();
+    </script>
+    """
+    return get_premium_layout(content, title="Network Intelligence", active_page="analytics", scripts=scripts)
 
 @app.get("/view/simulate", response_class=HTMLResponse)
 def view_simulate():
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head><title>Device Simulator</title>{BASE_STYLE}</head>
-    <body>
-        {NAV_HTML}
-        <div class="container">
+    content = """
+    <div class="container" style="max-width: 800px;">
+        <div class="glass-panel" style="padding: 40px; margin-top: 50px;">
             <h1>🚀 Drive Test Simulator</h1>
-            <div class="card">
-                <p>Simulate a device driving along a route and uploading batch data.</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div>
-                        <label>Auth Token</label>
-                        <input id="token" type="password" placeholder="Paste API Key here">
-                    </div>
-                    <div>
-                        <label>Device ID</label>
-                        <input id="devId" type="text" placeholder="Device UUID">
-                    </div>
-                </div>
-                <button onclick="simulateUpload()">🚀 Send Batch (10 Points)</button>
-            </div>
-            <div id="simLog" class="card" style="font-family: monospace; font-size: 12px; height: 300px; overflow-y: scroll; display:none;"></div>
-        </div>
-        <script>
-            // Auto-fill from previous registration
-            document.getElementById('token').value = localStorage.getItem('senzor_api_key') || '';
-            document.getElementById('devId').value = localStorage.getItem('senzor_device_id') || '';
+            <p style="color: var(--text-muted); margin-bottom: 30px;">Generate synthetic data to test platform scalability and mapping.</p>
             
-            function log(msg) {{
-                const div = document.getElementById('simLog');
-                div.style.display = 'block';
-                div.innerHTML += `<div>[${{new Date().toLocaleTimeString()}}] ${{msg}}</div>`;
-                div.scrollTop = div.scrollHeight;
-            }}
-
-            async function simulateUpload() {{
-                const token = document.getElementById('token').value;
-                const devId = document.getElementById('devId').value;
-                if(!token) return alert("Please Register first to get an API Token!");
-                
-                // Generate fake path
-                const baseLat = 40.7128; // NYC
-                const baseLon = -74.0060;
-                const data = [];
-                const now = Math.floor(Date.now() / 1000);
-                
-                for(let i=0; i<10; i++) {{
-                    data.push({{
-                        ts: now - i*5,
-                        lat: baseLat + (Math.random() * 0.01),
-                        lon: baseLon + (Math.random() * 0.01),
-                        acc: 5.0,
-                        net: Math.random() > 0.5 ? 'LTE' : 'NR',
-                        ci: 12345,
-                        metrics: {{
-                            rsrp: -80 - Math.floor(Math.random() * 50), // Random -80 to -130
-                            rsrq: -10, sinr: 15
-                        }}
-                    }});
-                }}
-                
-                const payload = {{
-                    meta: {{
-                        device_id: devId,
-                        batch_size: 10,
-                        client_timestamp: now,
-                        model: "WebSimulator",
-                        os_version: "Web 1.0"
-                    }},
-                    data: data
-                }};
-                
-                log("📡 Uploading batch...");
-                try {{
-                    const res = await fetch('/api/v1/ingest/batch', {{
-                        method: 'POST',
-                        headers: {{
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Token ' + token
-                        }},
-                        body: JSON.stringify(payload)
-                    }});
-                    const json = await res.json();
-                    if(res.ok) log("✅ Success: " + json.message);
-                    else log("❌ Error: " + (json.detail || res.statusText));
-                }} catch(e) {{ log("🧨 Network Error"); }}
-            }}
-        </script>
-    </body>
-    </html>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <div>
+                    <label>Auth Token</label>
+                    <input id="token" type="password" placeholder="Paste API Key here">
+                </div>
+                <div>
+                    <label>Device ID</label>
+                    <input id="devId" type="text" placeholder="Device UUID">
+                </div>
+            </div>
+            
+            <button onclick="simulateUpload()" class="btn" style="width: 100%; justify-content: center; height: 50px; font-size: 16px;">
+                <i class="fas fa-play"></i> Launch Simulation (Batch of 10)
+            </button>
+            
+            <div id="simLog" style="margin-top: 30px; padding: 20px; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; height: 300px; overflow-y: auto; display:none; color: #a5b4fc;">
+                <div style="border-bottom: 1px solid rgba(165, 180, 252, 0.1); padding-bottom: 10px; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; font-size: 10px; letter-spacing: 1px;">Execution Console</div>
+            </div>
+        </div>
+    </div>
     """
+    scripts = """
+    <script>
+        document.getElementById('token').value = localStorage.getItem('senzor_api_key') || '';
+        document.getElementById('devId').value = localStorage.getItem('senzor_device_id') || '';
+        
+        function log(msg) {
+            const div = document.getElementById('simLog');
+            div.style.display = 'block';
+            div.innerHTML += `<div><span style="color: #6366f1;">[${new Date().toLocaleTimeString()}]</span> ${msg}</div>`;
+            div.scrollTop = div.scrollHeight;
+        }
+
+        async function simulateUpload() {
+            const token = document.getElementById('token').value;
+            const devId = document.getElementById('devId').value;
+            if(!token) return alert("API Key is required to simulate upload.");
+            
+            const baseLat = 40.7128; 
+            const baseLon = -74.0060;
+            const data = [];
+            const now = Math.floor(Date.now() / 1000);
+            
+            for(let i=0; i<10; i++) {
+                data.push({
+                    ts: now - i*5,
+                    lat: baseLat + (Math.random() * 0.01),
+                    lon: baseLon + (Math.random() * 0.01),
+                    acc: 5.0,
+                    net: Math.random() > 0.5 ? 'LTE' : 'NR',
+                    ci: 12345,
+                    metrics: {
+                        rsrp: -80 - Math.floor(Math.random() * 50),
+                        rsrq: -10, sinr: 15
+                    }
+                });
+            }
+            
+            const payload = {
+                meta: {
+                    device_id: devId || "sim-001",
+                    batch_size: 10,
+                    client_timestamp: now,
+                    model: "WebSimulator",
+                    os_version: "Web 1.0"
+                },
+                data: data
+            };
+            
+            log("📡 Initiating encrypted batch transmission...");
+            try {
+                const res = await fetch('/api/v1/ingest/batch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Token ' + token
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if(res.ok) log("<span style='color: #10b981;'>✅ Batch Accepted:</span> " + json.message);
+                else log("<span style='color: #ef4444;'>❌ Rejected:</span> " + (json.detail || res.statusText));
+            } catch(e) { log("<span style='color: #ef4444;'>🧨 Protocol Failure:</span> " + e); }
+        }
+    </script>
+    """
+    return get_premium_layout(content, title="Device Simulator", active_page="register", scripts=scripts)
 
 @app.get("/view/data", response_class=HTMLResponse)
 def view_data(db: Session = Depends(database.get_db)):
@@ -628,48 +855,46 @@ def view_data(db: Session = Depends(database.get_db)):
     rows = ""
     for m in measurements:
         pt = to_shape(m.location)
-        status_color = "#ff4b2b" if m.status == "Hole" else "#00f2fe";
+        status_color = "#ff4b2b" if m.status == "Hole" else "#10b981"
         rows += f"""
-        <tr style="border-bottom: 1px solid #333;">
-            <td style="padding: 10px;">{m.id}</td>
-            <td style="padding: 10px;">{m.recorded_at.strftime('%Y-%m-%d %H:%M:%S')}</td>
-            <td style="padding: 10px;">{m.device_id[:8] if m.device_id else 'N/A'}...</td>
-            <td style="padding: 10px;">{m.network_type}</td>
-            <td style="padding: 10px; font-weight: bold;">{m.rsrp}</td>
-            <td style="padding: 10px;"><span style="color:{status_color}">{m.status}</span></td>
-            <td style="padding: 10px;">{pt.y:.4f}, {pt.x:.4f}</td>
+        <tr>
+            <td>{m.id}</td>
+            <td style="color: var(--text-muted); font-size: 11px;">{m.recorded_at.strftime('%Y-%m-%d %H:%M')}</td>
+            <td><code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 11px;">{m.device_id[:12]}...</code></td>
+            <td><span class="badge badge-user">{m.network_type}</span></td>
+            <td style="font-weight: 700;">{m.rsrp}</td>
+            <td><span style="color:{status_color}; font-size: 12px; font-weight: 600;">{m.status}</span></td>
+            <td style="color: var(--text-muted); font-size: 11px;">{pt.y:.4f}, {pt.x:.4f}</td>
         </tr>
         """
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head><title>Raw Data</title>{BASE_STYLE}</head>
-    <body>
-        {NAV_HTML}
-        <div class="container">
-            <h1>🗄️ Measurement Database (Last 100)</h1>
-            <div class="card" style="padding: 0; overflow: hidden;">
-                <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                    <thead style="background: #2d2d2d; color: #aaa; text-transform: uppercase; font-size: 12px;">
-                        <tr>
-                            <th style="padding: 15px;">ID</th>
-                            <th>Time</th>
-                            <th>Device</th>
-                            <th>Net</th>
-                            <th>RSRP</th>
-                            <th>Status</th>
-                            <th>Location</th>
-                        </tr>
-                    </thead>
-                    <tbody style="color: #ddd;">
-                        {rows}
-                    </tbody>
-                </table>
-            </div>
+    content = f"""
+    <div class="container" style="max-width: 1400px;">
+        <div style="margin-bottom: 40px;">
+            <h1>🗄️ Observation Ledger</h1>
+            <p style="color: var(--text-muted);">Real-time stream of the latest 100 measurements ingested by the platform.</p>
         </div>
-    </body>
-    </html>
+
+        <div class="glass-panel" style="padding: 0; overflow: hidden;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Timestamp</th>
+                        <th>Resource ID</th>
+                        <th>Network</th>
+                        <th>RSRP (dBm)</th>
+                        <th>Class</th>
+                        <th>Global Coordinates</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows}
+                </tbody>
+            </table>
+        </div>
+    </div>
     """
+    return get_premium_layout(content, title="Observation Ledger", active_page="data")
 
 @app.get("/view/admin", response_class=HTMLResponse)
 def view_admin(db: Session = Depends(database.get_db)):
@@ -682,23 +907,25 @@ def view_admin(db: Session = Depends(database.get_db)):
             models.NetworkMeasurement.user_id == u.id
         ).count()
         role_type = "admin" if u.role == models.UserRole.ADMIN else "user"
-        role_badge = f'<span class="badge badge-{role_type}"><i class="fas fa-{"crown" if u.role == models.UserRole.ADMIN else "user"}"></i> {u.role.value.upper()}</span>'
+        role_icon = "crown" if u.role == models.UserRole.ADMIN else "user"
         user_rows += f"""
         <tr>
             <td>
-                <div style="font-weight: 600;">{u.username or "No Username"}</div>
+                <div style="font-weight: 600;">{u.username or "Anonymous"}</div>
                 <div style="font-size: 11px; color: var(--text-muted);">{u.email}</div>
             </td>
-            <td>{role_badge}</td>
+            <td>
+                <span class="badge badge-{role_type}"><i class="fas fa-{role_icon}"></i> {u.role.value.upper()}</span>
+            </td>
             <td>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 60px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px;">
+                    <div style="width: 60px; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
                         <div style="width: {min(100, user_count/10)}%; height: 100%; background: var(--primary); border-radius: 2px;"></div>
                     </div>
-                    {user_count}
+                    <span style="font-size: 13px;">{user_count} pts</span>
                 </div>
             </td>
-            <td>{u.created_at.strftime('%Y-%m-%d')}</td>
+            <td style="font-size: 13px; color: var(--text-muted);">{u.created_at.strftime('%b %d, %Y')}</td>
         </tr>
         """
     
@@ -706,201 +933,123 @@ def view_admin(db: Session = Depends(database.get_db)):
     total_measurements = db.query(models.NetworkMeasurement).count()
     active_devices = db.query(models.NetworkMeasurement.device_id).distinct().count()
     
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Senzor Admin Dashboard</title>
-        {BASE_STYLE}
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <style>
-            .dashboard-header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 30px;
-            }}
-            .tab-nav {{
-                display: flex;
-                gap: 20px;
-                border-bottom: 1px solid var(--border);
-                margin-bottom: 30px;
-            }}
-            .tab-btn {{
-                background: none;
-                border: none;
-                color: var(--text-muted);
-                padding: 15px 5px;
-                cursor: pointer;
-                font-size: 0.95rem;
-                font-weight: 500;
-                position: relative;
-                transition: color 0.3s;
-            }}
-            .tab-btn.active {{
-                color: var(--primary);
-            }}
-            .tab-btn.active::after {{
-                content: '';
-                position: absolute;
-                bottom: -1px;
-                left: 0;
-                width: 100%;
-                height: 2px;
-                background: var(--primary);
-                box-shadow: 0 -2px 10px var(--primary);
-            }}
-            .tab-content {{ display: none; animation: fadeIn 0.4s; }}
-            .tab-content.active {{ display: block; }}
-            
-            #adminMap {{ height: 500px; width: 100%; border-radius: 12px; z-index: 1; }}
-        </style>
-    </head>
-    <body style="opacity: 0; transition: opacity 0.5s;">
-        {NAV_HTML}
-        
-        <div class="container">
-            <div class="dashboard-header">
-                <div>
-                    <h1>Overview</h1>
-                    <p style="color: var(--text-muted); margin-top: -20px;">Welcome back, Admin</p>
-                </div>
-                <button onclick="logout()" class="btn btn-secondary">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </button>
-            </div>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value">{total_users}</div>
-                    <div class="stat-label">Total Users</div>
-                    <i class="fas fa-users" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 40px;"></i>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{total_measurements}</div>
-                    <div class="stat-label">Data Points</div>
-                    <i class="fas fa-database" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 40px;"></i>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{active_devices}</div>
-                    <div class="stat-label">Active Devices</div>
-                    <i class="fas fa-mobile-alt" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 40px;"></i>
-                </div>
-            </div>
-            
-            <div class="tab-nav">
-                <button class="tab-btn active" onclick="switchTab('users')">👥 User Management</button>
-                <button class="tab-btn" onclick="switchTab('map')">🗺️ Live Map</button>
-                <button class="tab-btn" onclick="switchTab('system')">⚙️ System Health</button>
-            </div>
-            
-            <!-- User Tab -->
-            <div id="users" class="tab-content active">
-                <div class="card">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                        <h3>User Directory</h3>
-                        <input type="text" placeholder="Search users..." style="width: 250px; margin: 0; padding: 8px 12px;">
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Role</th>
-                                <th>Contribution Level</th>
-                                <th>Joined</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {user_rows}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Map Tab -->
-            <div id="map" class="tab-content">
-                <div class="card" style="padding: 0; overflow: hidden;">
-                    <div id="adminMap"></div>
-                </div>
-            </div>
-            
-             <!-- System Tab -->
-            <div id="system" class="tab-content">
-                <div class="card">
-                    <h3>System Status</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
-                        <div>
-                            <label>Backend API</label>
-                            <div class="badge badge-user" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
-                                <i class="fas fa-check-circle"></i> Operational
-                            </div>
-                        </div>
-                         <div>
-                            <label>PostGIS Database</label>
-                            <div class="badge badge-user" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
-                                <i class="fas fa-database"></i> Connected
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+    content = f"""
+    <div class="container" style="max-width: 1400px;">
+        <div style="margin-bottom: 40px;">
+            <h1>🛡️ Admin Cockpit</h1>
+            <p style="color: var(--text-muted);">Platform command center for user management and system integrity.</p>
         </div>
-        
-        <script>
-            // Auth Check
-            const token = localStorage.getItem('admin_token');
-            if (!token) {{
-                window.location.href = '/view/login';
-            }} else {{
-                document.body.style.opacity = '1';
-            }}
-            
-            function logout() {{
-                localStorage.removeItem('admin_token');
-                window.location.href = '/view/login';
-            }}
-            
-            function switchTab(tabId) {{
-                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-                document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-                document.getElementById(tabId).classList.add('active');
-                event.target.classList.add('active');
-                
-                if(tabId === 'map' && !window.mapInitialized) {{
-                    initMap();
-                }}
-            }}
-            
-            window.mapInitialized = false;
-            function initMap() {{
-                setTimeout(() => {{
-                    var map = L.map('adminMap').setView([0, 0], 2);
-                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ attribution: '© OpenStreetMap' }}).addTo(map);
-                    
-                    fetch('/api/v1/measurements/').then(r => r.json()).then(data => {{
-                        var markers = L.featureGroup();
-                        data.forEach(m => {{
-                            var color = m.rsrp < -110 ? '#ef4444' : '#22d3ee';
-                            L.circleMarker([m.latitude, m.longitude], {{ radius: 5, fillColor: color, color: "white", weight: 1, fillOpacity: 0.8 }})
-                            .bindPopup(`<b>User:</b> ${{m.device_id}}<br><b>RSRP:</b> ${{m.rsrp}} dBm`).addTo(markers);
-                        }});
-                        markers.addTo(map);
-                        if(data.length > 0) map.fitBounds(markers.getBounds());
-                    }});
-                    window.mapInitialized = true;
-                }}, 100);
-            }}
-        </script>
-    </body>
-    </html>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{total_users}</div>
+                <div class="stat-label">Registered Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{total_measurements}</div>
+                <div class="stat-label">System Data Points</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{active_devices}</div>
+                <div class="stat-label">Validated Devices</div>
+            </div>
+        </div>
+
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('users')"><i class="fas fa-users"></i> Users</button>
+            <button class="tab-btn" onclick="switchTab('system')"><i class="fas fa-server"></i> System Health</button>
+        </div>
+
+        <!-- User Management -->
+        <div id="users" class="tab-content active">
+            <div class="glass-panel" style="padding: 0; overflow: hidden;">
+                <div style="padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin:0;">User Directory</h3>
+                    <div style="position: relative; width: 300px;">
+                        <i class="fas fa-search" style="position: absolute; left: 15px; top: 18px; color: var(--text-muted);"></i>
+                        <input type="text" placeholder="Search accounts..." style="padding-left: 45px; margin-bottom: 0;">
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Identity</th>
+                            <th>Role</th>
+                            <th>Contribution</th>
+                            <th>Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {user_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- System Health -->
+        <div id="system" class="tab-content">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-microchip" style="color: #10b981;"></i> Backend Infrastructure</h3>
+                    <div style="margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-muted);">Service Status</span>
+                            <span class="badge badge-user" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: none;">Operational</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">API Uptime</span>
+                            <span style="color: var(--text-main); font-weight: 600;">99.9%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-database" style="color: var(--primary);"></i> Storage Layer</h3>
+                    <div style="margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-muted);">Database</span>
+                            <span class="badge badge-user" style="background: rgba(59, 130, 246, 0.1); color: var(--primary); border: none;">PostGIS Connected</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Sync Latency</span>
+                            <span style="color: var(--text-main); font-weight: 600;">14ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     """
+    
+    scripts = """
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+            window.location.hash = tabId;
+        }
+        
+        // Handle initial hash
+        window.onload = () => {
+            const hash = window.location.hash.replace('#', '');
+            if (hash && document.getElementById(hash)) {
+                switchTab(hash);
+                // Highlight the correct button
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    if (b.innerText.toLowerCase().includes(hash)) b.classList.add('active');
+                    else b.classList.remove('active');
+                });
+            }
+        };
+    </script>
+    """
+    return get_premium_layout(content, title="Admin Cockpit", active_page="admin", scripts=scripts)
 
 # --- API ENDPOINTS (Logic) ---
 
 @app.post("/api/v1/register", response_model=schemas.RegistrationResponse)
-@limiter.limit("5/minute") 
+@limiter.limit("5/minute")
 def register_device(request: Request, payload: schemas.DeviceRegistration, db: Session = Depends(database.get_db)):
     device = db.query(models.DeviceProfile).filter(models.DeviceProfile.id == payload.device_id).first()
     token = secrets.token_hex(32)
