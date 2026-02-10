@@ -36,46 +36,90 @@ API_KEY_NAME = "Authorization"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 # --- NAVIGATION & UI COMPONENTS ---
+# --- NAVIGATION & UI COMPONENTS ---
 NAV_HTML = """
-<nav style="background: #1e1e1e; padding: 15px; border-bottom: 1px solid #333;">
-    <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
-        <div style="font-weight: bold; font-size: 18px; color: #4facfe;">
-            📡 Senzor <span style="font-size: 12px; color: #666; font-weight: normal;">Admin Panel</span>
+<nav style="background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(148, 163, 184, 0.1); padding: 15px 0; position: sticky; top: 0; z-index: 100;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-size: 18px;">📡</span>
+            </div>
+            <div style="font-weight: 700; font-size: 20px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                Senzor <span style="font-weight: 400; font-size: 14px; color: #64748b; -webkit-text-fill-color: #64748b; margin-left: 5px;">Admin</span>
+            </div>
         </div>
         <div>
-            <a href="/" style="color: #ccc; text-decoration: none; margin-left: 20px; font-size: 14px;">Dashboard</a>
-            <a href="/view/register" style="color: #ccc; text-decoration: none; margin-left: 20px; font-size: 14px;">Register Device</a>
-            <a href="/view/analytics" style="color: #ccc; text-decoration: none; margin-left: 20px; font-size: 14px;">Analytics</a>
-            <a href="/view/simulate" style="color: #ccc; text-decoration: none; margin-left: 20px; font-size: 14px;">Simulator</a>
-            <a href="/view/data" style="color: #ccc; text-decoration: none; margin-left: 20px; font-size: 14px;">Raw Data</a>
-            <a href="/docs" target="_blank" style="color: #4facfe; text-decoration: none; margin-left: 20px; font-size: 14px;">API Docs ↗</a>
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/view/register" class="nav-link">Register Device</a>
+            <a href="/view/analytics" class="nav-link">Analytics</a>
+            <a href="/view/data" class="nav-link">Data</a>
+            <a href="/view/admin" class="nav-link" style="color: #3b82f6;">Admin Panel</a>
+            <a href="/docs" target="_blank" class="nav-link" style="color: #8b5cf6;">API ↗</a>
         </div>
     </div>
 </nav>
 """
 
 BASE_STYLE = """
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-    body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: #121212; color: #e0e0e0; }
-    .container { max-width: 1000px; margin: 40px auto; padding: 20px; }
-    h1 { color: #fff; border-bottom: 2px solid #4facfe; padding-bottom: 10px; margin-bottom: 30px; display: inline-block; }
-    .card { background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-    .stat-card { background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%); padding: 20px; border-radius: 12px; border: 1px solid #333; text-align: center; transition: transform 0.3s ease, border-color 0.3s ease; }
-    .stat-card:hover { transform: translateY(-5px); border-color: #4facfe; }
-    .stat-value { font-size: 28px; font-weight: bold; color: #4facfe; margin-bottom: 5px; }
-    .stat-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(79, 172, 254, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0); } }
-    .pulse-ready { animation: pulse 2s infinite; }
-    label { display: block; margin-bottom: 8px; font-weight: 600; color: #aaa; font-size: 12px; text-transform: uppercase; }
-    input, select, textarea { width: 100%; padding: 10px; background: #2d2d2d; border: 1px solid #444; color: white; border-radius: 4px; margin-bottom: 20px; box-sizing: border-box; }
-    button { padding: 10px 20px; background: #4facfe; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
-    button:hover { background: #00f2fe; color: #000; }
-    button.secondary { background: #333; color: #ccc; }
-    .success { padding: 15px; background: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; color: #00ff00; border-radius: 4px; display: none; margin-bottom: 20px; }
-    .error { padding: 15px; background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; color: #ff0000; border-radius: 4px; display: none; margin-bottom: 20px; }
-    pre { background: #000; padding: 15px; border-radius: 4px; overflow-x: auto; color: #00ff00; font-family: monospace; }
+    :root {
+        --bg-color: #0f172a;
+        --card-bg: rgba(30, 41, 59, 0.6);
+        --primary: #3b82f6;
+        --accent: #8b5cf6;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: rgba(148, 163, 184, 0.1);
+        --glass: blur(16px);
+        --gradient: linear-gradient(135deg, var(--primary), var(--accent));
+    }
+    
+    * { box-sizing: border-box; }
+    body { font-family: 'Outfit', sans-serif; margin: 0; padding: 0; background: var(--bg-color); color: var(--text-main); min-height: 100vh; overflow-x: hidden; }
+    
+    .glass-panel { background: var(--card-bg); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    
+    .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+    
+    h1, h2, h3 { font-weight: 600; color: var(--text-main); margin-top: 0; }
+    h1 { font-size: 2.5rem; letter-spacing: -0.02em; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1.5rem; }
+    
+    .card { background: var(--card-bg); backdrop-filter: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 24px; transition: transform 0.2s, box-shadow 0.2s; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: rgba(59, 130, 246, 0.3); }
+    
+    .btn { padding: 12px 24px; background: var(--gradient); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 8px; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4); filter: brightness(1.1); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: var(--text-muted); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); color: var(--text-main); }
+    
+    input, select { width: 100%; padding: 14px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; margin-bottom: 20px; transition: border-color 0.2s; font-family: inherit; }
+    input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+    label { display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    
+    table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    th { text-align: left; padding: 16px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 500; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.1em; }
+    td { padding: 16px; border-bottom: 1px solid var(--border); color: var(--text-main); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr { transition: background-color 0.2s; }
+    tr:hover td { background-color: rgba(255, 255, 255, 0.02); }
+    
+    .badge { padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+    .badge-admin { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3); }
+    .badge-user { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
+    
+    .nav-link { color: var(--text-muted); text-decoration: none; margin-left: 24px; font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+    .nav-link:hover { color: var(--text-main); }
+    
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 32px; }
+    .stat-card { background: linear-gradient(145deg, rgba(30,41,59,0.4), rgba(15,23,42,0.4)); padding: 24px; border-radius: 16px; border: 1px solid var(--border); position: relative; overflow: hidden; }
+    .stat-card::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--gradient); opacity: 0.5; }
+    .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; letter-spacing: -0.02em; }
+    .stat-label { color: var(--text-muted); font-size: 0.875rem; font-weight: 500; }
+    
+    .fade-in { animation: fadeIn 0.5s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 """
 
@@ -116,40 +160,56 @@ def view_login():
         <title>Senzor Admin Login</title>
         {BASE_STYLE}
         <style>
-            .login-container {{
-                max-width: 400px;
-                margin: 100px auto;
-                padding: 40px;
-                background: #1e1e1e;
-                border-radius: 12px;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            body {{
+                background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 20%),
+                                radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 20%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }}
-            .login-container h1 {{
+            .login-container {{
+                width: 100%;
+                max-width: 420px;
+                padding: 40px;
+            }}
+            .brand {{
                 text-align: center;
                 margin-bottom: 30px;
-                color: #4facfe;
             }}
-            .login-container input {{
-                margin-bottom: 20px;
-            }}
-            .login-container button {{
-                width: 100%;
+            .brand-icon {{
+                font-size: 48px;
+                margin-bottom: 10px;
+                display: block;
             }}
         </style>
     </head>
     <body>
-        <div class="login-container">
-            <h1>🔐 Admin Login</h1>
-            <div id="error" class="error"></div>
-            <form onsubmit="login(event)">
-                <label>Email</label>
-                <input type="email" id="email" value="admin@senzor.com" required>
+        <div class="login-container fade-in">
+            <div class="glass-panel" style="padding: 40px;">
+                <div class="brand">
+                    <span class="brand-icon">📡</span>
+                    <h1 style="font-size: 24px; margin: 0;">Admin Portal</h1>
+                    <p style="color: var(--text-muted);">Sign in to manage your network</p>
+                </div>
                 
-                <label>Password</label>
-                <input type="password" id="password" placeholder="Enter password" required>
+                <div id="error" class="error" style="display:none; text-align: center;"></div>
                 
-                <button type="submit">Login</button>
-            </form>
+                <form onsubmit="login(event)">
+                    <label>Email Address</label>
+                    <input type="email" id="email" value="admin@senzor.com" required placeholder="name@company.com">
+                    
+                    <label>Password</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                    
+                    <button type="submit" class="btn" style="width: 100%; justify-content: center;">
+                        <span>Sign In</span> <i class="fas fa-arrow-right"></i>
+                    </button>
+                    
+                    <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-muted);">
+                        Secure Drive Test Management System &copy; 2026
+                    </div>
+                </form>
+            </div>
         </div>
         
         <script>
@@ -157,6 +217,12 @@ def view_login():
                 e.preventDefault();
                 const email = document.getElementById('email').value;
                 const password = document.getElementById('password').value;
+                const btn = document.querySelector('button');
+                const errBox = document.getElementById('error');
+                
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authenticating...';
+                btn.disabled = true;
+                errBox.style.display = 'none';
                 
                 try {{
                     const formData = new URLSearchParams();
@@ -172,17 +238,19 @@ def view_login():
                     const data = await res.json();
                     
                     if (res.ok) {{
-                        // Store token
                         localStorage.setItem('admin_token', data.access_token);
-                        // Redirect to admin dashboard
-                        window.location.href = '/view/admin';
+                        btn.innerHTML = '<i class="fas fa-check"></i> Success';
+                        btn.style.background = '#10b981';
+                        setTimeout(() => window.location.href = '/view/admin', 500);
                     }} else {{
-                        document.getElementById('error').innerText = data.detail || 'Login failed';
-                        document.getElementById('error').style.display = 'block';
+                        throw new Error(data.detail || 'Login failed');
                     }}
                 }} catch (err) {{
-                    document.getElementById('error').innerText = 'Network error';
-                    document.getElementById('error').style.display = 'block';
+                    btn.innerHTML = '<span>Sign In</span> <i class="fas fa-arrow-right"></i>';
+                    btn.disabled = false;
+                    btn.style.background = '';
+                    errBox.innerText = err.message;
+                    errBox.style.display = 'block';
                 }}
             }}
         </script>
@@ -607,50 +675,36 @@ def view_data(db: Session = Depends(database.get_db)):
 def view_admin(db: Session = Depends(database.get_db)):
     """Admin dashboard - requires login."""
     # Get all users
-    users = db.query(models.User).all()
+    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
     user_rows = ""
     for u in users:
         user_count = db.query(models.NetworkMeasurement).filter(
             models.NetworkMeasurement.user_id == u.id
         ).count()
-        role_badge = "👑 ADMIN" if u.role == models.UserRole.ADMIN else "👤 USER"
+        role_type = "admin" if u.role == models.UserRole.ADMIN else "user"
+        role_badge = f'<span class="badge badge-{role_type}"><i class="fas fa-{"crown" if u.role == models.UserRole.ADMIN else "user"}"></i> {u.role.value.upper()}</span>'
         user_rows += f"""
-        <tr style="border-bottom: 1px solid #333;">
-            <td style="padding: 10px;">{u.email}</td>
-            <td style="padding: 10px;"><span style="color: #4facfe;">{role_badge}</span></td>
-            <td style="padding: 10px; font-weight: bold;">{user_count}</td>
-            <td style="padding: 10px;">{u.created_at.strftime('%Y-%m-%d')}</td>
-        </tr>
-        """
-    
-    # Get recent measurements with user attribution
-    measurements = db.query(models.NetworkMeasurement).order_by(
-        models.NetworkMeasurement.recorded_at.desc()
-    ).limit(50).all()
-    
-    meas_rows = ""
-    for m in measurements:
-        pt = to_shape(m.location)
-        user_email = "Unknown"
-        if m.user_id:
-            user = db.query(models.User).filter(models.User.id == m.user_id).first()
-            if user:
-                user_email = user.email
-        
-        status_color = "#ff4b2b" if m.status == "Hole" else "#00f2fe"
-        meas_rows += f"""
-        <tr style="border-bottom: 1px solid #333;">
-            <td style="padding: 10px;">{m.id}</td>
-            <td style="padding: 10px;">{user_email}</td>
-            <td style="padding: 10px;">{m.network_type}</td>
-            <td style="padding: 10px; font-weight: bold;">{m.rsrp}</td>
-            <td style="padding: 10px;"><span style="color:{status_color}">{m.status}</span></td>
-            <td style="padding: 10px;">{m.recorded_at.strftime('%Y-%m-%d %H:%M')}</td>
+        <tr>
+            <td>
+                <div style="font-weight: 600;">{u.username or "No Username"}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">{u.email}</div>
+            </td>
+            <td>{role_badge}</td>
+            <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 60px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px;">
+                        <div style="width: {min(100, user_count/10)}%; height: 100%; background: var(--primary); border-radius: 2px;"></div>
+                    </div>
+                    {user_count}
+                </div>
+            </td>
+            <td>{u.created_at.strftime('%Y-%m-%d')}</td>
         </tr>
         """
     
     total_users = len(users)
     total_measurements = db.query(models.NetworkMeasurement).count()
+    active_devices = db.query(models.NetworkMeasurement.device_id).distinct().count()
     
     return f"""
     <!DOCTYPE html>
@@ -658,88 +712,185 @@ def view_admin(db: Session = Depends(database.get_db)):
     <head>
         <title>Senzor Admin Dashboard</title>
         {BASE_STYLE}
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
-            .admin-nav {{
-                background: #2d2d2d;
-                padding: 10px;
-                margin-bottom: 20px;
-                border-radius: 8px;
+            .dashboard-header {{
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                margin-bottom: 30px;
             }}
-            .admin-nav button {{
-                background: #ff4b2b;
-                padding: 8px 16px;
+            .tab-nav {{
+                display: flex;
+                gap: 20px;
+                border-bottom: 1px solid var(--border);
+                margin-bottom: 30px;
             }}
+            .tab-btn {{
+                background: none;
+                border: none;
+                color: var(--text-muted);
+                padding: 15px 5px;
+                cursor: pointer;
+                font-size: 0.95rem;
+                font-weight: 500;
+                position: relative;
+                transition: color 0.3s;
+            }}
+            .tab-btn.active {{
+                color: var(--primary);
+            }}
+            .tab-btn.active::after {{
+                content: '';
+                position: absolute;
+                bottom: -1px;
+                left: 0;
+                width: 100%;
+                height: 2px;
+                background: var(--primary);
+                box-shadow: 0 -2px 10px var(--primary);
+            }}
+            .tab-content {{ display: none; animation: fadeIn 0.4s; }}
+            .tab-content.active {{ display: block; }}
+            
+            #adminMap {{ height: 500px; width: 100%; border-radius: 12px; z-index: 1; }}
         </style>
     </head>
-    <body>
+    <body style="opacity: 0; transition: opacity 0.5s;">
         {NAV_HTML}
+        
         <div class="container">
-            <div class="admin-nav">
-                <h2 style="margin: 0; color: #4facfe;">👑 Admin Control Panel</h2>
-                <button onclick="logout()">Logout</button>
+            <div class="dashboard-header">
+                <div>
+                    <h1>Overview</h1>
+                    <p style="color: var(--text-muted); margin-top: -20px;">Welcome back, Admin</p>
+                </div>
+                <button onclick="logout()" class="btn btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
             </div>
             
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-value">{total_users}</div>
                     <div class="stat-label">Total Users</div>
+                    <i class="fas fa-users" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 40px;"></i>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">{total_measurements}</div>
-                    <div class="stat-label">Total Measurements</div>
+                    <div class="stat-label">Data Points</div>
+                    <i class="fas fa-database" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 40px;"></i>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{active_devices}</div>
+                    <div class="stat-label">Active Devices</div>
+                    <i class="fas fa-mobile-alt" style="position: absolute; right: 20px; top: 20px; opacity: 0.1; font-size: 40px;"></i>
                 </div>
             </div>
             
-            <div class="card">
-                <h3>👥 All Users</h3>
-                <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                    <thead style="background: #2d2d2d; color: #aaa; text-transform: uppercase; font-size: 12px;">
-                        <tr>
-                            <th style="padding: 15px;">Email</th>
-                            <th>Role</th>
-                            <th>Contributions</th>
-                            <th>Joined</th>
-                        </tr>
-                    </thead>
-                    <tbody style="color: #ddd;">
-                        {user_rows}
-                    </tbody>
-                </table>
+            <div class="tab-nav">
+                <button class="tab-btn active" onclick="switchTab('users')">👥 User Management</button>
+                <button class="tab-btn" onclick="switchTab('map')">🗺️ Live Map</button>
+                <button class="tab-btn" onclick="switchTab('system')">⚙️ System Health</button>
             </div>
             
-            <div class="card">
-                <h3>📊 Recent Measurements (Last 50)</h3>
-                <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                    <thead style="background: #2d2d2d; color: #aaa; text-transform: uppercase; font-size: 12px;">
-                        <tr>
-                            <th style="padding: 15px;">ID</th>
-                            <th>User</th>
-                            <th>Network</th>
-                            <th>RSRP</th>
-                            <th>Status</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody style="color: #ddd;">
-                        {meas_rows}
-                    </tbody>
-                </table>
+            <!-- User Tab -->
+            <div id="users" class="tab-content active">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                        <h3>User Directory</h3>
+                        <input type="text" placeholder="Search users..." style="width: 250px; margin: 0; padding: 8px 12px;">
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Contribution Level</th>
+                                <th>Joined</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {user_rows}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+            
+            <!-- Map Tab -->
+            <div id="map" class="tab-content">
+                <div class="card" style="padding: 0; overflow: hidden;">
+                    <div id="adminMap"></div>
+                </div>
+            </div>
+            
+             <!-- System Tab -->
+            <div id="system" class="tab-content">
+                <div class="card">
+                    <h3>System Status</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                        <div>
+                            <label>Backend API</label>
+                            <div class="badge badge-user" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
+                                <i class="fas fa-check-circle"></i> Operational
+                            </div>
+                        </div>
+                         <div>
+                            <label>PostGIS Database</label>
+                            <div class="badge badge-user" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
+                                <i class="fas fa-database"></i> Connected
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
         
         <script>
-            // Check if logged in
+            // Auth Check
             const token = localStorage.getItem('admin_token');
             if (!token) {{
                 window.location.href = '/view/login';
+            }} else {{
+                document.body.style.opacity = '1';
             }}
             
             function logout() {{
                 localStorage.removeItem('admin_token');
                 window.location.href = '/view/login';
+            }}
+            
+            function switchTab(tabId) {{
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+                document.getElementById(tabId).classList.add('active');
+                event.target.classList.add('active');
+                
+                if(tabId === 'map' && !window.mapInitialized) {{
+                    initMap();
+                }}
+            }}
+            
+            window.mapInitialized = false;
+            function initMap() {{
+                setTimeout(() => {{
+                    var map = L.map('adminMap').setView([0, 0], 2);
+                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ attribution: '© OpenStreetMap' }}).addTo(map);
+                    
+                    fetch('/api/v1/measurements/').then(r => r.json()).then(data => {{
+                        var markers = L.featureGroup();
+                        data.forEach(m => {{
+                            var color = m.rsrp < -110 ? '#ef4444' : '#22d3ee';
+                            L.circleMarker([m.latitude, m.longitude], {{ radius: 5, fillColor: color, color: "white", weight: 1, fillOpacity: 0.8 }})
+                            .bindPopup(`<b>User:</b> ${{m.device_id}}<br><b>RSRP:</b> ${{m.rsrp}} dBm`).addTo(markers);
+                        }});
+                        markers.addTo(map);
+                        if(data.length > 0) map.fitBounds(markers.getBounds());
+                    }});
+                    window.mapInitialized = true;
+                }}, 100);
             }}
         </script>
     </body>
