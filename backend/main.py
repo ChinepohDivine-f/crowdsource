@@ -872,10 +872,15 @@ async def ingest_batch(
                 recorded_at=recorded_at
             )
 
-        db.add(measurement)
-        measurements.append(measurement)
+            db.add(measurement)
+            measurements.append(measurement)
+            
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error processing batch: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing batch: {str(e)}")
         
-    db.commit()
     return {"message": "Batch processed successfully", "saved_count": len(measurements)}
 
 @app.get("/api/v1/measurements/", response_model=List[schemas.MeasurementResponse])
