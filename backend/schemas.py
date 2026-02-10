@@ -58,11 +58,13 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 class UserCreate(BaseModel):
+    username: str
     email: str
     password: str
 
 class UserResponse(BaseModel):
     id: str
+    username: Optional[str] = None
     email: str
     role: str
     is_active: bool

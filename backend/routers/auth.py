@@ -15,15 +15,20 @@ router = APIRouter(
 
 @router.post("/register", response_model=schemas.UserResponse)
 async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
+    # Check email
+    if db.query(models.User).filter(models.User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Check username
+    if db.query(models.User).filter(models.User.username == user.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken")
     
     hashed_password = auth.get_password_hash(user.password)
     new_user = models.User(
         email=user.email,
+        username=user.username,
         hashed_password=hashed_password,
-        role=models.UserRole.USER # Default role
+        role=models.UserRole.USER
     )
     db.add(new_user)
     db.commit()
@@ -49,3 +54,17 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @router.get("/me", response_model=schemas.UserResponse)
 async def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):
     return current_user
+
+@router.get("/me/stats")
+async def get_user_stats(current_user: models.User = Depends(auth.get_current_active_user), db: Session = Depends(get_db)):
+    """Get current user's contribution statistics."""
+    user_measurements = db.query(models.NetworkMeasurement).filter(
+        models.NetworkMeasurement.user_id == current_user.id
+    ).count()
+    
+    return {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "total_measurements": user_measurements,
+        "role": current_user.role
+    }

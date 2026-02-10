@@ -6,9 +6,8 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 import '../models/user.dart';
 
 class AuthService with ChangeNotifier {
-  // Replace with your actual backend URL (use 10.0.2.2 for Android Emulator, localhost for iOS/Web)
-  static const String baseUrl = 'http://10.0.2.2:8000'; // emulator
-  // static const String baseUrl = 'http://127.0.0.1:8000'; // iOS/web
+  // Base URL for production
+  static const String baseUrl = 'https://crowdsource-backend-3ixx.onrender.com/api/v1/auth';
   
   final _storage = const FlutterSecureStorage();
   String? _token;
@@ -18,6 +17,7 @@ class AuthService with ChangeNotifier {
   bool get isAuthenticated => _token != null && !JwtDecoder.isExpired(_token!);
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
+  String? get token => _token;
 
   Future<void> loadUser() async {
     _token = await _storage.read(key: 'jwt_token');
@@ -35,7 +35,7 @@ class AuthService with ChangeNotifier {
     if (_token == null) return;
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/users/me'),
+        Uri.parse('$baseUrl/me'),
         headers: {'Authorization': 'Bearer $_token'},
       );
 
@@ -83,7 +83,7 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  Future<bool> register(String email, String password) async {
+  Future<bool> register(String email, String username, String password) async {
     _isLoading = true;
     notifyListeners();
 
@@ -91,7 +91,11 @@ class AuthService with ChangeNotifier {
       final response = await http.post(
         Uri.parse('$baseUrl/register'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
+        body: jsonEncode({
+          'email': email, 
+          'username': username,
+          'password': password
+        }),
       );
 
       _isLoading = false;

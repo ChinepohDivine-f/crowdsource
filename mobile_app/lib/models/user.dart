@@ -1,12 +1,14 @@
 class User {
   final String id;
   final String email;
+  final String? username;
   final String role;
   final bool isActive;
 
   User({
     required this.id,
     required this.email,
+    this.username,
     required this.role,
     required this.isActive,
   });
@@ -15,7 +17,8 @@ class User {
     return User(
       id: json['id'],
       email: json['email'],
-      role: json['role'],
+      username: json['username'],
+      role: json['role'] ?? 'USER',
       isActive: json['is_active'] ?? true, // API might return is_active
     );
   }

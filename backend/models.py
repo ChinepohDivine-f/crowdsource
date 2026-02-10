@@ -14,6 +14,7 @@ class User(Base):
     __tablename__ = "core_user"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String, unique=True, index=True, nullable=True) # New field
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.USER)

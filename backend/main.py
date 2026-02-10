@@ -106,6 +106,90 @@ async def get_api_key(api_key_header: str = Security(api_key_header), db: Sessio
 
 # --- UI ROUTES ---
 
+@app.get("/view/login", response_class=HTMLResponse)
+def view_login():
+    """Admin login page."""
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Senzor Admin Login</title>
+        {BASE_STYLE}
+        <style>
+            .login-container {{
+                max-width: 400px;
+                margin: 100px auto;
+                padding: 40px;
+                background: #1e1e1e;
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            }}
+            .login-container h1 {{
+                text-align: center;
+                margin-bottom: 30px;
+                color: #4facfe;
+            }}
+            .login-container input {{
+                margin-bottom: 20px;
+            }}
+            .login-container button {{
+                width: 100%;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="login-container">
+            <h1>🔐 Admin Login</h1>
+            <div id="error" class="error"></div>
+            <form onsubmit="login(event)">
+                <label>Email</label>
+                <input type="email" id="email" value="admin@senzor.com" required>
+                
+                <label>Password</label>
+                <input type="password" id="password" placeholder="Enter password" required>
+                
+                <button type="submit">Login</button>
+            </form>
+        </div>
+        
+        <script>
+            async function login(e) {{
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                
+                try {{
+                    const formData = new URLSearchParams();
+                    formData.append('username', email);
+                    formData.append('password', password);
+                    
+                    const res = await fetch('/api/v1/auth/token', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
+                        body: formData
+                    }});
+                    
+                    const data = await res.json();
+                    
+                    if (res.ok) {{
+                        // Store token
+                        localStorage.setItem('admin_token', data.access_token);
+                        // Redirect to admin dashboard
+                        window.location.href = '/view/admin';
+                    }} else {{
+                        document.getElementById('error').innerText = data.detail || 'Login failed';
+                        document.getElementById('error').style.display = 'block';
+                    }}
+                }} catch (err) {{
+                    document.getElementById('error').innerText = 'Network error';
+                    document.getElementById('error').style.display = 'block';
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     return f"""
@@ -481,7 +565,7 @@ def view_data(db: Session = Depends(database.get_db)):
         <tr style="border-bottom: 1px solid #333;">
             <td style="padding: 10px;">{m.id}</td>
             <td style="padding: 10px;">{m.recorded_at.strftime('%Y-%m-%d %H:%M:%S')}</td>
-            <td style="padding: 10px;">{m.device_id[:8]}...</td>
+            <td style="padding: 10px;">{m.device_id[:8] if m.device_id else 'N/A'}...</td>
             <td style="padding: 10px;">{m.network_type}</td>
             <td style="padding: 10px; font-weight: bold;">{m.rsrp}</td>
             <td style="padding: 10px;"><span style="color:{status_color}">{m.status}</span></td>
@@ -519,6 +603,149 @@ def view_data(db: Session = Depends(database.get_db)):
     </html>
     """
 
+@app.get("/view/admin", response_class=HTMLResponse)
+def view_admin(db: Session = Depends(database.get_db)):
+    """Admin dashboard - requires login."""
+    # Get all users
+    users = db.query(models.User).all()
+    user_rows = ""
+    for u in users:
+        user_count = db.query(models.NetworkMeasurement).filter(
+            models.NetworkMeasurement.user_id == u.id
+        ).count()
+        role_badge = "👑 ADMIN" if u.role == models.UserRole.ADMIN else "👤 USER"
+        user_rows += f"""
+        <tr style="border-bottom: 1px solid #333;">
+            <td style="padding: 10px;">{u.email}</td>
+            <td style="padding: 10px;"><span style="color: #4facfe;">{role_badge}</span></td>
+            <td style="padding: 10px; font-weight: bold;">{user_count}</td>
+            <td style="padding: 10px;">{u.created_at.strftime('%Y-%m-%d')}</td>
+        </tr>
+        """
+    
+    # Get recent measurements with user attribution
+    measurements = db.query(models.NetworkMeasurement).order_by(
+        models.NetworkMeasurement.recorded_at.desc()
+    ).limit(50).all()
+    
+    meas_rows = ""
+    for m in measurements:
+        pt = to_shape(m.location)
+        user_email = "Unknown"
+        if m.user_id:
+            user = db.query(models.User).filter(models.User.id == m.user_id).first()
+            if user:
+                user_email = user.email
+        
+        status_color = "#ff4b2b" if m.status == "Hole" else "#00f2fe"
+        meas_rows += f"""
+        <tr style="border-bottom: 1px solid #333;">
+            <td style="padding: 10px;">{m.id}</td>
+            <td style="padding: 10px;">{user_email}</td>
+            <td style="padding: 10px;">{m.network_type}</td>
+            <td style="padding: 10px; font-weight: bold;">{m.rsrp}</td>
+            <td style="padding: 10px;"><span style="color:{status_color}">{m.status}</span></td>
+            <td style="padding: 10px;">{m.recorded_at.strftime('%Y-%m-%d %H:%M')}</td>
+        </tr>
+        """
+    
+    total_users = len(users)
+    total_measurements = db.query(models.NetworkMeasurement).count()
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Senzor Admin Dashboard</title>
+        {BASE_STYLE}
+        <style>
+            .admin-nav {{
+                background: #2d2d2d;
+                padding: 10px;
+                margin-bottom: 20px;
+                border-radius: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .admin-nav button {{
+                background: #ff4b2b;
+                padding: 8px 16px;
+            }}
+        </style>
+    </head>
+    <body>
+        {NAV_HTML}
+        <div class="container">
+            <div class="admin-nav">
+                <h2 style="margin: 0; color: #4facfe;">👑 Admin Control Panel</h2>
+                <button onclick="logout()">Logout</button>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{total_users}</div>
+                    <div class="stat-label">Total Users</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{total_measurements}</div>
+                    <div class="stat-label">Total Measurements</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>👥 All Users</h3>
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead style="background: #2d2d2d; color: #aaa; text-transform: uppercase; font-size: 12px;">
+                        <tr>
+                            <th style="padding: 15px;">Email</th>
+                            <th>Role</th>
+                            <th>Contributions</th>
+                            <th>Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody style="color: #ddd;">
+                        {user_rows}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="card">
+                <h3>📊 Recent Measurements (Last 50)</h3>
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead style="background: #2d2d2d; color: #aaa; text-transform: uppercase; font-size: 12px;">
+                        <tr>
+                            <th style="padding: 15px;">ID</th>
+                            <th>User</th>
+                            <th>Network</th>
+                            <th>RSRP</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody style="color: #ddd;">
+                        {meas_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <script>
+            // Check if logged in
+            const token = localStorage.getItem('admin_token');
+            if (!token) {{
+                window.location.href = '/view/login';
+            }}
+            
+            function logout() {{
+                localStorage.removeItem('admin_token');
+                window.location.href = '/view/login';
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
 # --- API ENDPOINTS (Logic) ---
 
 @app.post("/api/v1/register", response_model=schemas.RegistrationResponse)
@@ -548,27 +775,102 @@ def register_device(request: Request, payload: schemas.DeviceRegistration, db: S
     return {"api_key": token, "message": msg}
 
 @app.post("/api/v1/ingest/batch", status_code=status.HTTP_201_CREATED)
-def ingest_batch(payload: schemas.BatchPayload, device: models.DeviceProfile = Depends(get_api_key), db: Session = Depends(database.get_db)):
-    if payload.meta.device_id != device.id:
-        pass # Allow for simulator mismatch for now, or log warning
+async def ingest_batch(
+    payload: schemas.BatchPayload, 
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(database.get_db)
+):
+    """Ingest batch data. Supports both Device API Key (Token) and User JWT (Bearer)."""
     
-    measurements = []
-    for item in payload.data:
-        recorded_at = datetime.fromtimestamp(item.ts)
-        rsrp = item.metrics.get("rsrp", -140)
-        status_val = "Hole" if rsrp < -110 else "Good"
+    print(f"DEBUG: Ingest Batch Hit. Device: {payload.meta.device_id}, Size: {len(payload.data)}")
+    
+    device_id = None
+    user_id = None
+    
+    if not authorization:
+        print("DEBUG: Missing Auth Header")
+        raise HTTPException(status_code=401, detail="Missing Authorization Header")
+    
+    try:
+        parts = authorization.split()
+        if len(parts) != 2:
+            raise HTTPException(status_code=401, detail="Invalid Auth Header Format")
+            
+        scheme, token = parts
         
-        measurement = models.NetworkMeasurement(
-            device_id=device.id,
-            network_type=item.net,
-            rsrp=rsrp,
-            rsrq=item.metrics.get("rsrq"),
-            rssi=item.metrics.get("rssi"),
-            sinr=item.metrics.get("sinr"),
-            cell_id=item.ci,
-            status=status_val,
-            location=f"POINT({item.lon} {item.lat})",
-            recorded_at=recorded_at
+        if scheme.lower() == 'bearer':
+            # User JWT - authenticate and link to user
+            try:
+                # Ensure we're using the correct secret key
+                current_user = await auth.get_current_user(token, db)
+                user_id = current_user.id
+                print(f"DEBUG: Authenticated User: {current_user.email} ({user_id})")
+                
+                # Get or create device for this user
+                device = db.query(models.DeviceProfile).filter(models.DeviceProfile.id == payload.meta.device_id).first()
+                if not device:
+                    print(f"DEBUG: Registering new device for user: {payload.meta.device_id}")
+                    device = models.DeviceProfile(
+                        id=payload.meta.device_id,
+                        user_id=user_id,
+                        manufacturer=payload.meta.manufacturer,
+                        model=payload.meta.model,
+                        os_version=payload.meta.os_version,
+                        api_key=None # API Key not needed for user-owned devices
+                    )
+                    db.add(device)
+                    db.commit()
+                elif device.user_id != user_id:
+                     # Optional: Claim device if unclaimed? For now, just log warning
+                     print(f"DEBUG: Device {payload.meta.device_id} exists but user mismatch (Expected {user_id}, got {device.user_id})")
+                     # We still allow ingestion, but maybe don't link device ownership if already taken
+                
+                device_id = payload.meta.device_id
+
+            except Exception as e:
+                print(f"DEBUG: Bearer Auth Failed: {str(e)}")
+                raise HTTPException(status_code=401, detail=f"Invalid Bearer token: {str(e)}")
+        
+        elif scheme.lower() == 'token':
+             # Legacy Device API Key
+             print(f"DEBUG: Simulating Device Token Auth: {token[:10]}...")
+             device = db.query(models.DeviceProfile).filter(models.DeviceProfile.api_key == token).first()
+             if not device:
+                 print("DEBUG: Invalid Device Token")
+                 raise HTTPException(status_code=403, detail="Invalid API Key")
+             device_id = device.id
+             print(f"DEBUG: Authenticated Device: {device_id}")
+             
+        else:
+            raise HTTPException(status_code=401, detail="Invalid Auth Scheme")
+            
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"DEBUG: Auth Logic Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Auth processing error: {str(e)}")
+
+    # Process Data
+    try:
+        measurements = []
+        for item in payload.data:
+            recorded_at = datetime.fromtimestamp(item.ts)
+            rsrp = item.metrics.get("rsrp", -140)
+            status_val = "Hole" if rsrp < -110 else "Good"
+            
+            measurement = models.NetworkMeasurement(
+                device_id=device_id,
+                user_id=user_id,  # Link to authenticated user
+                network_type=item.net,
+                rsrp=rsrp,
+                rsrq=item.metrics.get("rsrq"),
+                rssi=item.metrics.get("rssi"),
+                sinr=item.metrics.get("sinr"),
+                cell_id=item.ci,
+                status=status_val,
+                location=f"POINT({item.lon} {item.lat})",
+                recorded_at=recorded_at
+            )
         )
         db.add(measurement)
         measurements.append(measurement)

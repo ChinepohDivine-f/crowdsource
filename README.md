@@ -7,6 +7,8 @@ A professional Mobile-to-Cloud crowdsensing system designed for cellular network
 -   **Real-time Data Collection**: Captures signal strength (RSRP), signal quality (SINR), network type, and cell ID.
 -   **GPS Integration**: Automatically tags every measurement with high-precision GPS coordinates.
 -   **Interactive Map**: Visualizes collected data points on an OpenStreetMap with color-coded markers (Red for coverage holes, Green for good signal).
+-   **User Management**: Role-based authentication (Admin/User) and user-specific data tracking.
+-   **Admin Panel**: Web-based dashboard for managing users and viewing global network statistics.
 -   **Automated Sync**: Periodically synchronizes local data with a central cloud database.
 -   **Analytics**: Backend logic to identify "Coverage Holes" where signal strength drops below functional thresholds.
 
@@ -47,7 +49,8 @@ docker run --name crowdsource_db \
     source venv/bin/activate  # On Windows: venv\Scripts\activate
     ```
 3.  Install dependencies: `pip install -r requirements.txt`
-4.  Run the server: `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
+4.  **Initialize Admin User**: `python backend/init_admin.py` (Default: `admin@senzor.com` / `Senzor2026`)
+5.  Run the server: `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
 
 ### Step 3: Run the Mobile App (Flutter)
 1.  Navigate to the mobile folder: `cd mobile_app`
