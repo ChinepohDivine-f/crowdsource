@@ -871,7 +871,7 @@ async def ingest_batch(
                 location=f"POINT({item.lon} {item.lat})",
                 recorded_at=recorded_at
             )
-        )
+
         db.add(measurement)
         measurements.append(measurement)
         
