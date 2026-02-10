@@ -234,10 +234,14 @@ def view_register():
 
 @app.get("/view/analytics", response_class=HTMLResponse)
 def view_analytics(db: Session = Depends(database.get_db)):
-    # Quick aggregation for stat cards
-    total_count = db.query(models.NetworkMeasurement).count()
-    avg_rsrp = db.query(func.avg(models.NetworkMeasurement.rsrp)).scalar() or 0
-    unique_devices = db.query(models.NetworkMeasurement.device_id).distinct().count()
+    try:
+        # Quick aggregation for stat cards
+        total_count = db.query(models.NetworkMeasurement).count()
+        avg_rsrp = db.query(func.avg(models.NetworkMeasurement.rsrp)).scalar() or 0
+        unique_devices = db.query(models.NetworkMeasurement.device_id).distinct().count()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return HTMLResponse(f"<h1>Database Connection Error</h1><p>Could not connect to Supabase. Check DATABASE_URL.</p><pre>{e}</pre>", status_code=500)
     
     return f"""
     <!DOCTYPE html>
@@ -573,7 +577,7 @@ def ingest_batch(payload: schemas.BatchPayload, device: models.DeviceProfile = D
     return {"message": "Batch processed successfully", "saved_count": len(measurements)}
 
 @app.get("/api/v1/measurements/", response_model=List[schemas.MeasurementResponse])
-def get_measurements(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_admin_user)):
+def get_measurements(db: Session = Depends(database.get_db)):
     measurements = db.query(models.NetworkMeasurement).order_by(models.NetworkMeasurement.recorded_at.desc()).limit(1000).all()
     response = []
     for m in measurements:
@@ -595,7 +599,7 @@ def get_measurements(db: Session = Depends(database.get_db), current_user: model
     return response
 
 @app.get("/api/v1/analytics/trigger")
-def trigger_analysis(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_admin_user)):
+def trigger_analysis(db: Session = Depends(database.get_db)):
     holes = analysis.detect_coverage_holes(db)
     features = []
     for h in holes:
@@ -610,7 +614,7 @@ def trigger_analysis(db: Session = Depends(database.get_db), current_user: model
     return {"type": "FeatureCollection", "features": features}
 
 @app.get("/api/v1/analytics/stats")
-def get_analytics_stats(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_admin_user)):
+def get_analytics_stats(db: Session = Depends(database.get_db)):
     # RSRP Distribution
     sql = "SELECT rsrp FROM core_networkmeasurement"
     rsrps = [r[0] for r in db.execute(text(sql)).fetchall()]
@@ -636,7 +640,7 @@ def get_analytics_stats(db: Session = Depends(database.get_db), current_user: mo
     return {"rsrp_bins": bins, "net_types": net_types}
 
 @app.get("/api/v1/analytics/predict")
-def get_ml_prediction(lat: float, lon: float, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_active_user)):
+def get_ml_prediction(lat: float, lon: float, db: Session = Depends(database.get_db)):
     prediction = analysis.predict_signal_strength(db, lat, lon)
     return {"prediction": prediction}
 
