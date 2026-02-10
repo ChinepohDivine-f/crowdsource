@@ -48,3 +48,24 @@ class DeviceRegistration(BaseModel):
 class RegistrationResponse(BaseModel):
     api_key: str
     message: str
+
+# Auth Models
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    role: str
+    is_active: bool
+
+    class Config:
+        from_attributes = True

@@ -16,7 +16,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-import models, schemas, database, analysis
+import models, schemas, database, analysis, auth
+from routers import auth as auth_router
 
 # Create tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -27,6 +28,9 @@ app = FastAPI(title="Senzor API", version="1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Include Auth Router
+app.include_router(auth_router.router)
 
 API_KEY_NAME = "Authorization"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -77,11 +81,20 @@ BASE_STYLE = """
 
 # --- AUTH & HELPERS ---
 async def get_api_key(api_key_header: str = Security(api_key_header), db: Session = Depends(database.get_db)):
+    # Fallback to check for Bearer token for User-based ingestion in the future
     if not api_key_header:
         raise HTTPException(status_code=401, detail="Missing Authorization Header")
+    
+    # Simple check: is it a Token (Device) or Bearer (User)?
+    # For this function, we primarily look for Device API Key 'Token <key>'
     try:
         scheme, token = api_key_header.split()
-        if scheme.lower() != 'token': raise HTTPException(status_code=401, detail="Invalid Scheme")
+        if scheme.lower() == 'bearer':
+            # This would be a user, logic handled by auth.get_current_user
+            # For now, this dependency is strictly for legacy Device API Key
+             raise HTTPException(status_code=401, detail="Device Auth requires 'Token' scheme")
+        if scheme.lower() != 'token': 
+            raise HTTPException(status_code=401, detail="Invalid Scheme")
     except:
         raise HTTPException(status_code=401, detail="Invalid Header Format")
 
@@ -560,7 +573,7 @@ def ingest_batch(payload: schemas.BatchPayload, device: models.DeviceProfile = D
     return {"message": "Batch processed successfully", "saved_count": len(measurements)}
 
 @app.get("/api/v1/measurements/", response_model=List[schemas.MeasurementResponse])
-def get_measurements(db: Session = Depends(database.get_db)):
+def get_measurements(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_admin_user)):
     measurements = db.query(models.NetworkMeasurement).order_by(models.NetworkMeasurement.recorded_at.desc()).limit(1000).all()
     response = []
     for m in measurements:
@@ -582,7 +595,7 @@ def get_measurements(db: Session = Depends(database.get_db)):
     return response
 
 @app.get("/api/v1/analytics/trigger")
-def trigger_analysis(db: Session = Depends(database.get_db)):
+def trigger_analysis(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_admin_user)):
     holes = analysis.detect_coverage_holes(db)
     features = []
     for h in holes:
@@ -597,7 +610,7 @@ def trigger_analysis(db: Session = Depends(database.get_db)):
     return {"type": "FeatureCollection", "features": features}
 
 @app.get("/api/v1/analytics/stats")
-def get_analytics_stats(db: Session = Depends(database.get_db)):
+def get_analytics_stats(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_admin_user)):
     # RSRP Distribution
     sql = "SELECT rsrp FROM core_networkmeasurement"
     rsrps = [r[0] for r in db.execute(text(sql)).fetchall()]
@@ -623,7 +636,7 @@ def get_analytics_stats(db: Session = Depends(database.get_db)):
     return {"rsrp_bins": bins, "net_types": net_types}
 
 @app.get("/api/v1/analytics/predict")
-def get_ml_prediction(lat: float, lon: float, db: Session = Depends(database.get_db)):
+def get_ml_prediction(lat: float, lon: float, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_active_user)):
     prediction = analysis.predict_signal_strength(db, lat, lon)
     return {"prediction": prediction}
 
