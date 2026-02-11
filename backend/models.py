@@ -58,3 +58,15 @@ class NetworkMeasurement(Base):
 
     device = relationship("DeviceProfile", back_populates="measurements")
     user = relationship("User", back_populates="measurements")
+
+    @property
+    def latitude(self) -> float:
+        if self.location is None: return 0.0
+        from geoalchemy2.shape import to_shape
+        return to_shape(self.location).y
+
+    @property
+    def longitude(self) -> float:
+        if self.location is None: return 0.0
+        from geoalchemy2.shape import to_shape
+        return to_shape(self.location).x

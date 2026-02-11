@@ -483,11 +483,54 @@ def read_root():
             let sum = 0;
             data.forEach(m => {
                 sum += m.rsrp;
-                var color = m.rsrp < -110 ? '#ff4b2b' : (m.rsrp < -95 ? '#f59e0b' : '#10b981');
+                
+                // Enhanced color coding based on RSRP
+                var color = '#ff4b2b'; // Poor (red)
+                if (m.rsrp > -90) color = '#10b981'; // Excellent (green)
+                else if (m.rsrp > -105) color = '#8bc34a'; // Good (light green)
+                else if (m.rsrp > -115) color = '#f59e0b'; // Fair (yellow)
+                
+                // Create detailed popup with all metrics
+                var popupContent = `
+                    <div style="font-size: 12px; min-width: 200px;">
+                        <div style="font-weight: 700; font-size: 14px; margin-bottom: 8px; color: ${color};">
+                            ${m.network_type || 'Unknown'}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                            <div>
+                                <div style="color: #888; font-size: 10px;">RSRP</div>
+                                <div style="font-weight: 700;">${m.rsrp || '--'} dBm</div>
+                            </div>
+                            <div>
+                                <div style="color: #888; font-size: 10px;">RSRQ</div>
+                                <div style="font-weight: 700;">${m.rsrq || '--'} dB</div>
+                            </div>
+                            <div>
+                                <div style="color: #888; font-size: 10px;">SINR</div>
+                                <div style="font-weight: 700;">${m.sinr || '--'} dB</div>
+                            </div>
+                            <div>
+                                <div style="color: #888; font-size: 10px;">RSSI</div>
+                                <div style="font-weight: 700;">${m.rssi || '--'} dBm</div>
+                            </div>
+                        </div>
+                        <hr style="border: none; border-top: 1px solid #333; margin: 8px 0;">
+                        <div style="font-size: 10px; color: #888;">
+                            <div><b>Device:</b> ${m.device_id || 'Unknown'}</div>
+                            <div><b>User:</b> ${m.user_id || 'Anonymous'}</div>
+                            <div><b>Time:</b> ${m.timestamp ? new Date(m.timestamp).toLocaleString() : '--'}</div>
+                        </div>
+                    </div>
+                `;
+                
                 L.circleMarker([m.latitude, m.longitude], { 
-                    radius: 5, fillColor: color, color: "#fff", weight: 0.5, fillOpacity: 0.8 
+                    radius: 6,
+                    fillColor: color,
+                    color: "#fff",
+                    weight: 1.5,
+                    fillOpacity: 0.85
                 })
-                .bindPopup(`<b>Device:</b> ${m.device_id}<br><b>RSRP:</b> ${m.rsrp} dBm<br><b>Net:</b> ${m.network_type}`)
+                .bindPopup(popupContent)
                 .addTo(markersLayer);
             });
             if(data.length > 0) {
@@ -508,10 +551,11 @@ def read_root():
         var legend = L.control({position: 'bottomleft'});
         legend.onAdd = function (map) {
             var div = L.DomUtil.create('div', 'info legend');
-            div.innerHTML = '<b>Signal Quality</b><br>' +
-                           '<i style="background: #10b981"></i> Good (>-95)<br>' +
-                           '<i style="background: #f59e0b"></i> Fair (-95 to -110)<br>' +
-                           '<i style="background: #ff4b2b"></i> Poor (<-110)';
+            div.innerHTML = '<b>Signal Quality (RSRP)</b><br>' +
+                           '<i style="background: #10b981"></i> Excellent (>-90)<br>' +
+                           '<i style="background: #8bc34a"></i> Good (-90 to -105)<br>' +
+                           '<i style="background: #f59e0b"></i> Fair (-105 to -115)<br>' +
+                           '<i style="background: #ff4b2b"></i> Poor (<-115)';
             return div;
         };
         legend.addTo(map);
@@ -923,21 +967,34 @@ def view_admin(db: Session = Depends(database.get_db)):
         user_rows += f"""
         <tr>
             <td>
-                <div style="font-weight: 600;">{u.username or "Anonymous"}</div>
-                <div style="font-size: 11px; color: var(--text-muted);">{u.email}</div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;">
+                        {u.username[0].upper() if u.username else "?"}
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; font-size: 14px;">{u.username or "Anonymous"}</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">{u.email}</div>
+                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">ID: {u.id[:8]}...</div>
+                    </div>
+                </div>
             </td>
             <td>
                 <span class="badge badge-{role_type}"><i class="fas fa-{role_icon}"></i> {u.role.value.upper()}</span>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">{'Active' if u.is_active else 'Inactive'}</div>
             </td>
             <td>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 60px; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
-                        <div style="width: {min(100, user_count/10)}%; height: 100%; background: var(--primary); border-radius: 2px;"></div>
+                    <div style="width: 80px; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+                        <div style="width: {min(100, user_count/10)}%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: 3px;"></div>
                     </div>
-                    <span style="font-size: 13px;">{user_count} pts</span>
+                    <span style="font-size: 13px; font-weight: 600;">{user_count}</span>
                 </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">data points</div>
             </td>
-            <td style="font-size: 13px; color: var(--text-muted);">{u.created_at.strftime('%b %d, %Y')}</td>
+            <td>
+                <div style="font-size: 13px;">{u.created_at.strftime('%b %d, %Y')}</div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">{u.created_at.strftime('%I:%M %p')}</div>
+            </td>
         </tr>
         """
     
@@ -1054,6 +1111,62 @@ def view_admin(db: Session = Depends(database.get_db)):
                 });
             }
         };
+        
+        async function clearMeasurements() {
+            if (!confirm('⚠️ This will permanently delete ALL measurement data. This action cannot be undone. Continue?')) return;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('You must be logged in as admin');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v1/admin/clear-measurements', {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(`✅ ${data.message}`);
+                    location.reload();
+                } else {
+                    const error = await response.json();
+                    alert(`❌ Error: ${error.detail}`);
+                }
+            } catch (e) {
+                alert(`❌ Network error: ${e.message}`);
+            }
+        }
+        
+        async function clearUsers() {
+            if (!confirm('⚠️ This will permanently delete ALL non-admin users. This action cannot be undone. Continue?')) return;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('You must be logged in as admin');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v1/admin/clear-users', {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(`✅ ${data.message}`);
+                    location.reload();
+                } else {
+                    const error = await response.json();
+                    alert(`❌ Error: ${error.detail}`);
+                }
+            } catch (e) {
+                alert(`❌ Network error: ${e.message}`);
+            }
+        }
     </script>
     """
     return get_premium_layout(content, title="Admin Cockpit", active_page="admin", scripts=scripts)
@@ -1279,3 +1392,28 @@ def get_heatmap(db: Session = Depends(database.get_db)):
     for r in results:
         data.append({"lat": r.lat, "lon": r.lon, "val": r.avg_rsrp, "count": r.count})
     return data
+
+# --- ADMIN DATA MANAGEMENT ENDPOINTS ---
+
+@app.delete("/api/v1/admin/clear-measurements")
+def clear_all_measurements(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    """Clear all measurement data - Admin only"""
+    if current_user.role != models.UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    count = db.query(models.NetworkMeasurement).count()
+    db.query(models.NetworkMeasurement).delete()
+    db.commit()
+    return {"message": f"Successfully deleted {count} measurements", "count": count}
+
+@app.delete("/api/v1/admin/clear-users")
+def clear_non_admin_users(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    """Clear all non-admin users - Admin only"""
+    if current_user.role != models.UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Delete all users except admins
+    count = db.query(models.User).filter(models.User.role != models.UserRole.ADMIN).count()
+    db.query(models.User).filter(models.User.role != models.UserRole.ADMIN).delete()
+    db.commit()
+    return {"message": f"Successfully deleted {count} non-admin users", "count": count}

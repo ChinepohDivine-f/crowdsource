@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:intl/intl.dart';
@@ -34,6 +35,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   Timer? _timer;
   Map<String, dynamic>? _currentInfo;
   ll.LatLng? _currentPosition;
+  bool _isLoadingLocation = false;
   
   final List<Marker> _markers = [];
   final MapController _mapController = MapController();
@@ -151,10 +153,37 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   }
 
   Color _getSignalColor(int rsrp) {
-    if (rsrp > -90) return Colors.green; // Excellent
-    if (rsrp > -105) return Colors.lightGreen; // Good
-    if (rsrp > -115) return Colors.yellow; // Fair
-    return Colors.red; // Poor/Hole
+    if (rsrp > -90) return AppColors.signalExcellent; // Excellent
+    if (rsrp > -105) return AppColors.signalGood; // Good
+    if (rsrp > -115) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  // Quality assessment for RSRQ (Reference Signal Received Quality)
+  Color _getRsrqColor(int? rsrq) {
+    if (rsrq == null) return AppColors.textTertiary;
+    if (rsrq > -10) return AppColors.signalExcellent; // Excellent
+    if (rsrq > -15) return AppColors.signalGood; // Good
+    if (rsrq > -20) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  // Quality assessment for SINR (Signal to Interference plus Noise Ratio)
+  Color _getSinrColor(int? sinr) {
+    if (sinr == null) return AppColors.textTertiary;
+    if (sinr > 20) return AppColors.signalExcellent; // Excellent
+    if (sinr > 13) return AppColors.signalGood; // Good
+    if (sinr > 0) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  // Quality assessment for RSSI (Received Signal Strength Indicator)
+  Color _getRssiColor(int? rssi) {
+    if (rssi == null) return AppColors.textTertiary;
+    if (rssi > -65) return AppColors.signalExcellent; // Excellent
+    if (rssi > -75) return AppColors.signalGood; // Good
+    if (rssi > -85) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
   }
 
   Marker _createMarker(double lat, double lon, int rsrp, [int? rsrq, int? rssi, int? sinr, String? type]) {
@@ -272,12 +301,22 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                   right: 8,
                   top: 8,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
                       color: AppColors.accentCyan,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.backgroundDark, width: 1.5),
                     ),
-                    constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    child: Text(
+                      '$_pendingMeasurements',
+                      style: const TextStyle(
+                        color: AppColors.backgroundDark,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
             ],
@@ -286,66 +325,134 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         ],
       ),
       drawer: _buildDrawer(),
-      body: Stack(
-        children: [
-          // Map Layer - Using standard OSM for better visibility as requested
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: const ll.LatLng(9.0820, 8.6753),
-              initialZoom: 6,
-            ),
-            children: [
-              TileLayer(
-                // Replacing dark map with a lighter, high-contrast one or standard OSM
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', 
-                userAgentPackageName: 'com.crowdsource.mobile_app',
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Map Layer
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: const ll.LatLng(9.0820, 8.6753),
+                initialZoom: 6,
               ),
-              MarkerLayer(markers: _markers),
-            ],
-          ),
-
-          // Map Control Buttons (Zoom, Reset)
-          Positioned(
-            right: 16,
-            bottom: 260,
-            child: Column(
               children: [
-                _buildMapControlBtn(Icons.my_location, () async {
-                   final pos = await _location.getCurrentLocation();
-                   if (pos != null) _moveMap(ll.LatLng(pos.latitude, pos.longitude));
-                }),
-                const SizedBox(height: 12),
-                _buildMapControlBtn(Icons.delete_outline, _showResetConfirmation, isDestructive: true),
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.crowdsource.mobile_app',
+                ),
+                MarkerLayer(markers: _markers),
               ],
             ),
-          ),
 
-          // Floating Network Type Badge (Top Right)
-          if (_currentInfo != null)
+            // Map Controls (Relocated to the middle right)
             Positioned(
-              top: 100, // Below AppBar
               right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _getSignalColor(_currentInfo!['rsrp'] ?? -140),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
-                  ],
+              top: MediaQuery.of(context).size.height * 0.3,
+              child: Column(
+                children: [
+                  _buildMapControlBtn(
+                    _isLoadingLocation ? Icons.hourglass_empty : Icons.my_location,
+                    _isLoadingLocation ? null : () async {
+                      setState(() => _isLoadingLocation = true);
+                      try {
+                        final pos = await _location.getCurrentLocation();
+                        if (pos != null) _moveMap(ll.LatLng(pos.latitude, pos.longitude));
+                      } finally {
+                        if (mounted) setState(() => _isLoadingLocation = false);
+                      }
+                    },
+                    isLoading: _isLoadingLocation,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMapControlBtn(Icons.delete_outline, _showResetConfirmation, isDestructive: true),
+                ],
+              ),
+            ),
+
+            // Floating Network Type Badge (Top Right)
+            if (_currentInfo != null)
+              Positioned(
+                top: 80,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _getSignalColor(_currentInfo!['rsrp'] ?? -140),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.network_cell, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        _currentInfo!['type'] ?? 'Unknown',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              ),
+
+            // Compact Metrics Container (Above Bottom Button) - Horizontally Scrollable
+            Positioned(
+              bottom: 90,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 90,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
-                    const Icon(Icons.network_cell, color: Colors.white, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      _currentInfo!['type'] ?? 'Unknown',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceDark.withOpacity(0.95),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.cardBorder, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildCompactMetric(
+                            'RSRP',
+                            '${_currentInfo?['rsrp'] ?? '--'}',
+                            _getSignalColor(_currentInfo?['rsrp'] ?? -140),
+                          ),
+                          _buildMetricDivider(),
+                          _buildCompactMetric(
+                            'RSRQ',
+                            '${_currentInfo?['rsrq'] ?? '--'}',
+                            _getRsrqColor(_currentInfo?['rsrq']),
+                          ),
+                          _buildMetricDivider(),
+                          _buildCompactMetric(
+                            'SINR',
+                            '${_currentInfo?['sinr'] ?? '--'}',
+                            _getSinrColor(_currentInfo?['sinr']),
+                          ),
+                          _buildMetricDivider(),
+                          _buildCompactMetric(
+                            'RSSI',
+                            '${_currentInfo?['rssi'] ?? '--'}',
+                            _getRssiColor(_currentInfo?['rssi']),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -353,44 +460,79 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
               ),
             ),
 
-          // Horizontal Metrics Scroll View (Bottom)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              height: 140, // Height for scroll view
-              margin: const EdgeInsets.only(bottom: 20),
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                   _buildFloatingMetricCard('RSRP', '${_currentInfo?['rsrp'] ?? '-'}', 'dBm', _getSignalColor(_currentInfo?['rsrp'] ?? -140)),
-                   _buildFloatingMetricCard('RSRQ', '${_currentInfo?['rsrq'] ?? '-'}', 'dB', Colors.blueGrey),
-                   _buildFloatingMetricCard('SINR', '${_currentInfo?['sinr'] ?? '-'}', 'dB', Colors.teal),
-                   _buildFloatingMetricCard('RSSI', '${_currentInfo?['rssi'] ?? '-'}', 'dBm', Colors.orange),
-                   _buildFloatingMetricCard('CID', '${_currentInfo?['cellId'] ?? '-'}', '', Colors.purple),
-                   
-                   // Start/Stop Button as a Card at the end
-                   Container(
-                     margin: const EdgeInsets.only(right: 12, bottom: 8, top: 8),
-                     width: 100,
-                     child: ElevatedButton(
-                        onPressed: _toggleCollection,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isCollecting ? Colors.red : AppColors.primaryBlue,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 6,
+            // Bottom Start/Stop Button
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: SizedBox(
+                height: 60,
+                child: ElevatedButton(
+                  onPressed: _toggleCollection,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isCollecting ? AppColors.error : AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _isCollecting ? Icons.stop_circle : Icons.play_circle_filled,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _isCollecting ? 'STOP COLLECTION' : 'START MONITORING',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(_isCollecting ? Icons.stop : Icons.play_arrow, size: 32),
-                            const SizedBox(height: 4),
-                            Text(_isCollecting ? 'STOP' : 'START', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          ],
-                        ),
-                     ),
-                   ),
-                ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactMetric(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),
@@ -399,29 +541,12 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     );
   }
 
-  Widget _buildFloatingMetricCard(String label, String value, String unit, Color color) {
+  Widget _buildMetricDivider() {
     return Container(
-      width: 100,
-      margin: const EdgeInsets.only(right: 12, bottom: 8, top: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceDark.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.5), width: 2),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
-          if (unit.isNotEmpty)
-             Text(unit, style: const TextStyle(color: AppColors.textTertiary, fontSize: 10)),
-        ],
-      ),
+      height: 40,
+      width: 1,
+      color: AppColors.divider,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
 
@@ -609,7 +734,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     );
   }
 
-  Widget _buildMapControlBtn(IconData icon, VoidCallback onTap, {bool isDestructive = false}) {
+  Widget _buildMapControlBtn(IconData icon, VoidCallback? onTap, {bool isDestructive = false, bool isLoading = false}) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceDark.withOpacity(0.9),
@@ -620,7 +745,16 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         ],
       ),
       child: IconButton(
-        icon: Icon(icon, color: isDestructive ? AppColors.error : Colors.white),
+        icon: isLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryBlue,
+                ),
+              )
+            : Icon(icon, color: isDestructive ? AppColors.error : Colors.white),
         onPressed: onTap,
       ),
     );
