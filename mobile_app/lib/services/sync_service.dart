@@ -106,8 +106,12 @@ class SyncService {
         debugPrint("❌ Sync Failed! Status: ${response.statusCode} - ${response.body}");
         return false;
       }
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint("🧨 Sync Error: $e");
+      debugPrint(stack.toString());
+      if (e is SocketException) {
+        debugPrint("📡 Network unreachable. Backend might be down or URL is incorrect.");
+      }
       return false;
     }
   }

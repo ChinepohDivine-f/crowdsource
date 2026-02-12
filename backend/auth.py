@@ -14,6 +14,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-this-in-prod"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 300  # 5 hours for simplicity in demo
 
+if SECRET_KEY == "your-super-secret-key-change-this-in-prod" and os.getenv("RENDER"):
+    import logging
+    logging.getLogger(__name__).warning("⚠️ SECURITY WARNING: Default SECRET_KEY is being used in a production environment!")
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
 

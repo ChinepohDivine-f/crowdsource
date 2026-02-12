@@ -16,6 +16,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import models, schemas, database, analysis, auth
 from routers import auth as auth_router
@@ -42,6 +44,32 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Production CORS Configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For production, replace with specific domains like ["https://crowdsource.render.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Security Headers Middleware
+class SecurityHeaderMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+app.add_middleware(SecurityHeaderMiddleware)
+
+@app.get("/health")
+async def health_check():
+    """Health check for monitoring."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 # Create tables and ensure schema is up to date
 try:
@@ -186,9 +214,9 @@ def get_premium_layout(content: str, title: str = "Senzor", active_page: str = "
         <script>
             // Global State & Auth Verification
             document.addEventListener('DOMContentLoaded', () => {{
-                const token = localStorage.getItem('token');
-                const userEmail = localStorage.getItem('user_email');
-                const userRole = localStorage.getItem('user_role');
+                const token = localStorage.getItem('senzor_token');
+                const userEmail = localStorage.getItem('senzor_user');
+                const userRole = localStorage.getItem('senzor_role');
                 
                 const userDisplay = document.getElementById('user-display');
                 const loginLink = document.getElementById('login-nav-link');
@@ -196,14 +224,16 @@ def get_premium_layout(content: str, title: str = "Senzor", active_page: str = "
                 const adminLink = document.getElementById('admin-nav-link');
                 
                 if (token) {{
+                    console.log("[Senzor Auth] Active session found for:", userEmail);
                     userDisplay.innerText = userEmail || 'Authenticated User';
                     loginLink.style.display = 'none';
                     logoutBtn.style.display = 'inline-flex';
                     
-                    if (userRole === 'ADMIN') {{
+                    if (userRole && userRole.toUpperCase() === 'ADMIN') {{
+                        console.log("[Senzor Auth] Admin privileges verified.");
                         adminLink.style.display = 'flex';
                     }} else if (window.location.pathname === '/view/admin') {{
-                        // Unauthorized access to admin page
+                        console.warn("[Senzor Auth] Unauthorized access attempt to Admin section.");
                         window.location.href = '/';
                     }}
                 }} else {{
@@ -214,9 +244,10 @@ def get_premium_layout(content: str, title: str = "Senzor", active_page: str = "
             }});
 
             async function logout() {{
-                localStorage.removeItem('token');
-                localStorage.removeItem('user_email');
-                localStorage.removeItem('user_role');
+                console.log("[Senzor Auth] Terminating session...");
+                localStorage.removeItem('senzor_token');
+                localStorage.removeItem('senzor_user');
+                localStorage.removeItem('senzor_role');
                 window.location.href = '/view/login';
             }}
         </script>
@@ -322,14 +353,16 @@ def view_login():
     """Admin login page."""
     return f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <title>Senzor Admin Login</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Senzor Admin Access</title>
         {BASE_STYLE}
         <style>
             body {{
                 background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.1) 0%, transparent 40%),
-                                radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
+                                  radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -446,9 +479,10 @@ def view_login():
                     const data = await res.json();
                     
                     if(res.ok) {{
-                        localStorage.setItem('token', data.access_token);
-                        localStorage.setItem('user_email', data.email);
-                        localStorage.setItem('user_role', data.role);
+                        localStorage.setItem('senzor_token', data.access_token);
+                        localStorage.setItem('senzor_user', data.email);
+                        localStorage.setItem('senzor_role', data.role);
+                        console.log("[Senzor Auth] Login successful. Redirecting to Cockpit...");
                         window.location.href = '/view/admin';
                     }} else {{
                         const errBox = document.getElementById('err');
