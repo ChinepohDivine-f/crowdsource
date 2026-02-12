@@ -77,8 +77,9 @@ def get_sidebar(active_page: str = "dashboard"):
         ("analytics", "/view/analytics", "fas fa-chart-line", "Analytics"),
         ("data", "/view/data", "fas fa-database", "Raw Data"),
         ("register", "/view/register", "fas fa-plus-circle", "Register"),
-        ("admin", "/view/admin", "fas fa-user-shield", "Admin"),
     ]
+    
+    admin_link = ("admin", "/view/admin", "fas fa-user-shield", "Admin Cockpit")
     
     html = '<div class="sidebar">'
     html += '<div class="sidebar-brand">📡 <span>Senzor</span></div>'
@@ -86,10 +87,17 @@ def get_sidebar(active_page: str = "dashboard"):
     for id, path, icon, label in links:
         active_class = "active" if active_page == id else ""
         html += f'<a href="{path}" class="sidebar-link {active_class}"><i class="{icon}"></i> {label}</a>'
+    
+    # Hidden Admin Link (Visible via JS if authorized)
+    html += f'<a href="{admin_link[1]}" id="admin-nav-link" class="sidebar-link {"active" if active_page == "admin" else ""}" style="display: none;"><i class="{admin_link[2]}"></i> {admin_link[3]}</a>'
+    
     html += '</div>'
     html += '<div class="sidebar-footer">'
-    html += '  <div id="user-display" style="font-size: 12px; color: var(--text-muted); padding: 10px;">Guest</div>'
-    html += '  <a href="/view/login" id="login-nav-link" class="sidebar-link"><i class="fas fa-sign-in-alt"></i> Login</a>'
+    html += '  <div id="user-display" style="font-size: 11px; color: var(--text-muted); padding: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Guest User</div>'
+    html += '  <div style="display: flex; flex-direction: column; gap: 4px; padding: 0 10px 10px 10px;">'
+    html += '    <a href="/view/login" id="login-nav-link" class="btn btn-secondary" style="width: 100%; justify-content: start; font-size: 11px; padding: 8px 12px;"><i class="fas fa-sign-in-alt"></i> Login</a>'
+    html += '    <button id="logout-btn" onclick="logout()" class="btn btn-secondary" style="width: 100%; justify-content: start; font-size: 11px; padding: 8px 12px; display: none; background: rgba(239, 68, 68, 0.1); color: #ef4444;"><i class="fas fa-sign-out-alt"></i> Logout</button>'
+    html += '  </div>'
     html += '</div>'
     html += '</div>'
     return html
@@ -178,21 +186,39 @@ def get_premium_layout(content: str, title: str = "Senzor", active_page: str = "
         <script>
             // Global State & Auth Verification
             document.addEventListener('DOMContentLoaded', () => {{
-                const token = localStorage.getItem('admin_token');
+                const token = localStorage.getItem('token');
+                const userEmail = localStorage.getItem('user_email');
+                const userRole = localStorage.getItem('user_role');
+                
                 const userDisplay = document.getElementById('user-display');
                 const loginLink = document.getElementById('login-nav-link');
+                const logoutBtn = document.getElementById('logout-btn');
+                const adminLink = document.getElementById('admin-nav-link');
                 
                 if (token) {{
-                    userDisplay.innerText = 'Authenticated Admin';
-                    loginLink.innerHTML = '<i class="fas fa-sign-out-alt"></i> Logout';
-                    loginLink.href = '#';
-                    loginLink.onclick = (e) => {{
-                        e.preventDefault();
-                        localStorage.removeItem('admin_token');
+                    userDisplay.innerText = userEmail || 'Authenticated User';
+                    loginLink.style.display = 'none';
+                    logoutBtn.style.display = 'inline-flex';
+                    
+                    if (userRole === 'ADMIN') {{
+                        adminLink.style.display = 'flex';
+                    }} else if (window.location.pathname === '/view/admin') {{
+                        // Unauthorized access to admin page
+                        window.location.href = '/';
+                    }}
+                }} else {{
+                    if (window.location.pathname === '/view/admin') {{
                         window.location.href = '/view/login';
-                    }};
+                    }}
                 }}
             }});
+
+            async function logout() {{
+                localStorage.removeItem('token');
+                localStorage.removeItem('user_email');
+                localStorage.removeItem('user_role');
+                window.location.href = '/view/login';
+            }}
         </script>
         {scripts}
     </body>
@@ -417,6 +443,10 @@ def read_root():
     
     <div class="map-overlay">
         <div class="glass-panel" style="padding: 20px; width: 300px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; background: rgba(59, 130, 246, 0.1); padding: 8px; border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                <span style="font-size: 16px;">🎓</span>
+                <div style="font-size: 10px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px;">Project 2025-2026<br>Spec Compliant</div>
+            </div>
             <h3>Live Coverage</h3>
             <p style="color: var(--text-muted); font-size: 13px;">Monitor real-time signal quality across all mapped devices.</p>
             
@@ -445,8 +475,56 @@ def read_root():
         </div>
     </div>
 
+    <!-- Floating Detail Card for Map -->
+    <div id="detail-card" class="glass-panel detail-card" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h4 id="detail-net" style="margin: 0; color: var(--primary); font-size: 16px;">LTE</h4>
+            <button onclick="closeDetailCard()" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-item">
+                <label>RSRP</label>
+                <div id="detail-rsrp" class="detail-value">--</div>
+            </div>
+            <div class="detail-item">
+                <label>RSRQ</label>
+                <div id="detail-rsrq" class="detail-value">--</div>
+            </div>
+            <div class="detail-item">
+                <label>SINR</label>
+                <div id="detail-sinr" class="detail-value">--</div>
+            </div>
+            <div class="detail-item">
+                <label>RSSI</label>
+                <div id="detail-rssi" class="detail-value">--</div>
+            </div>
+        </div>
+        <hr style="border: none; border-top: 1px solid var(--border); margin: 15px 0;">
+        <div style="font-size: 11px; color: var(--text-muted);">
+            <div><b>Device:</b> <span id="detail-device">--</span></div>
+            <div><b>User:</b> <span id="detail-user">--</span></div>
+            <div><b>Time:</b> <span id="detail-time">--</span></div>
+        </div>
+    </div>
+
     <style>
         .map-overlay { position: absolute; top: 20px; right: 20px; z-index: 999; }
+        .detail-card { 
+            position: absolute; 
+            bottom: 40px; 
+            left: 20px; 
+            z-index: 1000; 
+            width: 280px; 
+            padding: 20px;
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .detail-item label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .detail-value { font-size: 18px; font-weight: 700; color: var(--text-main); }
         .leaflet-container { background: #0b0f19 !important; }
         .legend { background: rgba(15, 23, 42, 0.9); padding: 12px; border-radius: 12px; border: 1px solid var(--border); color: #fff; font-size: 11px; backdrop-filter: blur(10px); }
         .legend i { width: 10px; height: 10px; float: left; margin-right: 8px; border-radius: 50%; margin-top: 2px; }
@@ -530,7 +608,9 @@ def read_root():
                     weight: 1.5,
                     fillOpacity: 0.85
                 })
-                .bindPopup(popupContent)
+                .on('click', function() {
+                    showDetailCard(m, color);
+                })
                 .addTo(markersLayer);
             });
             if(data.length > 0) {
@@ -538,6 +618,23 @@ def read_root():
                 map.fitBounds(markersLayer.getBounds(), { padding: [50, 50] });
             }
         });
+
+        function showDetailCard(m, color) {
+            document.getElementById('detail-card').style.display = 'block';
+            document.getElementById('detail-net').innerText = m.network_type || 'Unknown';
+            document.getElementById('detail-net').style.color = color;
+            document.getElementById('detail-rsrp').innerText = (m.rsrp || '--') + ' dBm';
+            document.getElementById('detail-rsrq').innerText = (m.rsrq || '--') + ' dB';
+            document.getElementById('detail-sinr').innerText = (m.sinr || '--') + ' dB';
+            document.getElementById('detail-rssi').innerText = (m.rssi || '--') + ' dBm';
+            document.getElementById('detail-device').innerText = m.device_id || 'Unknown';
+            document.getElementById('detail-user').innerText = m.user_id || 'Anonymous';
+            document.getElementById('detail-time').innerText = m.timestamp ? new Date(m.timestamp).toLocaleString() : '--';
+        }
+
+        function closeDetailCard() {
+            document.getElementById('detail-card').style.display = 'none';
+        }
         
         fetch('/api/v1/analytics/heatmap').then(r => r.json()).then(data => {
             if (!Array.isArray(data)) return console.error("Heatmap data is not an array:", data);
@@ -953,7 +1050,7 @@ def view_data(db: Session = Depends(database.get_db)):
     return get_premium_layout(content, title="Observation Ledger", active_page="data")
 
 @app.get("/view/admin", response_class=HTMLResponse)
-def view_admin(db: Session = Depends(database.get_db)):
+def view_admin(current_user: models.User = Depends(auth.get_admin_user), db: Session = Depends(database.get_db)):
     """Admin dashboard - requires login."""
     # Get all users
     users = db.query(models.User).order_by(models.User.created_at.desc()).all()
@@ -1082,6 +1179,19 @@ def view_admin(db: Session = Depends(database.get_db)):
                             <span style="color: var(--text-muted);">Sync Latency</span>
                             <span style="color: var(--text-main); font-weight: 600;">14ms</span>
                         </div>
+                    </div>
+                </div>
+                
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-trash-alt" style="color: #ff4b2b;"></i> Data Management</h3>
+                    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Dangerous operations - administrative only.</p>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button onclick="clearMeasurements()" class="btn" style="background: rgba(255, 75, 43, 0.1); color: #ff4b2b; border: 1px solid rgba(255, 75, 43, 0.3); width: 100%; justify-content: center;">
+                            <i class="fas fa-database"></i> Clear All Measurements
+                        </button>
+                        <button onclick="clearUsers()" class="btn" style="background: rgba(255, 75, 43, 0.1); color: #ff4b2b; border: 1px solid rgba(255, 75, 43, 0.3); width: 100%; justify-content: center;">
+                            <i class="fas fa-users"></i> Clear User Database
+                        </button>
                     </div>
                 </div>
             </div>
