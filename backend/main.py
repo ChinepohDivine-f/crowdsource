@@ -1264,7 +1264,8 @@ async def ingest_batch(
                  print("DEBUG: Invalid Device Token")
                  raise HTTPException(status_code=403, detail="Invalid API Key")
              device_id = device.id
-             print(f"DEBUG: Authenticated Device: {device_id}")
+             user_id = device.user_id # Inherit user ownership from device
+             print(f"DEBUG: Authenticated Device: {device_id} (Owner: {user_id})")
              
         else:
             raise HTTPException(status_code=401, detail="Invalid Auth Scheme")

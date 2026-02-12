@@ -29,11 +29,11 @@ class DeviceProfile(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     api_key = Column(String, unique=True, index=True) # SRS Security Token
-    user_id = Column(String, ForeignKey("core_user.id"), nullable=True) # Link to User
+    user_id = Column(String, ForeignKey("core_user.id", ondelete="CASCADE"), nullable=True, index=True) # Link to User
     manufacturer = Column(String, nullable=True)
     model = Column(String, nullable=True)
     os_version = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     user = relationship("User", back_populates="devices")
     measurements = relationship("NetworkMeasurement", back_populates="device")
@@ -42,18 +42,18 @@ class NetworkMeasurement(Base):
     __tablename__ = "core_networkmeasurement"
 
     id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(String, ForeignKey("core_device.id"), index=True, nullable=True)
-    user_id = Column(String, ForeignKey("core_user.id"), index=True, nullable=True) # Link to User
-    network_type = Column(String)  # 'LTE' or 'NR'
-    rsrp = Column(Integer)
+    device_id = Column(String, ForeignKey("core_device.id", ondelete="CASCADE"), index=True, nullable=True)
+    user_id = Column(String, ForeignKey("core_user.id", ondelete="CASCADE"), index=True, nullable=True) # Link to User
+    network_type = Column(String, index=True)  # 'LTE' or 'NR'
+    rsrp = Column(Integer, index=True)
     rsrq = Column(Integer)
     rssi = Column(Integer)
     sinr = Column(Float) # SRS says Float
-    cell_id = Column(BigInteger)
-    status = Column(String)  # 'Good' or 'Hole'
+    cell_id = Column(BigInteger, index=True)
+    status = Column(String, index=True)  # 'Good' or 'Hole'
     # Stores location as a Geography point (WGS84)
-    location = Column(Geography(geometry_type='POINT', srid=4326)) 
-    recorded_at = Column(DateTime(timezone=True))
+    location = Column(Geography(geometry_type='POINT', srid=4326), index=True) 
+    recorded_at = Column(DateTime(timezone=True), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     device = relationship("DeviceProfile", back_populates="measurements")
