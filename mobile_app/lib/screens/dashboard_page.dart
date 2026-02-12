@@ -82,7 +82,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     setState(() {
       _isCollecting = !_isCollecting;
       if (_isCollecting) {
-        _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
+        _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
           _collectData();
         });
       } else {
