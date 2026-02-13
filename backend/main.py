@@ -66,6 +66,26 @@ class SecurityHeaderMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeaderMiddleware)
 
+def seed_admin_user(db: Session):
+    """Seed the default admin user if it doesn't exist."""
+    admin_email = "admin@senzor.com"
+    hashed_password = auth.get_password_hash("Senzor2026")
+    
+    admin = db.query(models.User).filter(func.lower(models.User.email) == admin_email.lower()).first()
+    if not admin:
+        logger.info(f"🌱 Seeding default admin user: {admin_email}")
+        new_admin = models.User(
+            email=admin_email,
+            username="admin",
+            hashed_password=hashed_password,
+            role=models.UserRole.ADMIN,
+            is_active=True
+        )
+        db.add(new_admin)
+        db.commit()
+    else:
+        logger.info("✅ Admin user already exists.")
+
 @app.get("/health")
 async def health_check():
     """Health check for monitoring."""
@@ -88,7 +108,12 @@ try:
         conn.execute(text("ALTER TABLE core_networkmeasurement ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES core_user(id)"))
         
         conn.commit()
-    logger.info("Database schema synchronized.")
+    
+    # Run Seeding
+    with database.SessionLocal() as db:
+        seed_admin_user(db)
+        
+    logger.info("Database schema synchronized and admin seeded.")
 except Exception as e:
     logger.error(f"Schema Sync Error: {e}")
 
