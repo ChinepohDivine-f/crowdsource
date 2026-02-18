@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Header, Security
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
@@ -10,6 +10,8 @@ from datetime import datetime
 import secrets
 import json
 import os
+import csv
+import io
 
 # Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -1279,6 +1281,9 @@ def view_admin(db: Session = Depends(database.get_db)):
                     <h3><i class="fas fa-trash-alt" style="color: #ff4b2b;"></i> Data Management</h3>
                     <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Dangerous operations - administrative only.</p>
                     <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button onclick="downloadCsv()" class="btn" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); width: 100%; justify-content: center;">
+                            <i class="fas fa-file-csv"></i> Export All Data (CSV)
+                        </button>
                         <button onclick="clearMeasurements()" class="btn" style="background: rgba(255, 75, 43, 0.1); color: #ff4b2b; border: 1px solid rgba(255, 75, 43, 0.3); width: 100%; justify-content: center;">
                             <i class="fas fa-database"></i> Clear All Measurements
                         </button>
@@ -1369,6 +1374,36 @@ def view_admin(db: Session = Depends(database.get_db)):
             } catch (e) {
                 alert(`❌ Network error: ${e.message}`);
             }
+        }
+        
+        async function downloadCsv() {
+             const token = localStorage.getItem('senzor_token');
+             if (!token) return alert('You must be logged in as admin');
+             
+             // Create a temporary link to trigger download with auth header is tricky with simple <a href>
+             // So we fetch as blob and download
+            try {
+                const response = await fetch('/api/v1/admin/export-measurements', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = "senzor_measurements.csv";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } else {
+                    const error = await response.json();
+                     alert(`❌ Export failed: ${error.detail}`);
+                }
+            } catch (e) {
+                alert(`❌ Network error: ${e.message}`);
+            }
+        }
         }
     </script>
     """
@@ -1609,6 +1644,52 @@ def clear_all_measurements(current_user: models.User = Depends(auth.get_current_
     db.query(models.NetworkMeasurement).delete()
     db.commit()
     return {"message": f"Successfully deleted {count} measurements", "count": count}
+
+@app.get("/api/v1/admin/export-measurements")
+def export_measurements_csv(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    """Export all measurements as CSV - Admin only"""
+    if current_user.role != models.UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    measurements = db.query(models.NetworkMeasurement).order_by(models.NetworkMeasurement.recorded_at.desc()).all()
+    
+    def iter_csv(data):
+        output = io.StringIO()
+        writer = csv.writer(output)
+        # Write Header
+        writer.writerow(["id", "device_id", "user_id", "network_type", "rsrp", "rsrq", "sinr", "rssi", "status", "latitude", "longitude", "timestamp"])
+        output.seek(0)
+        yield output.read()
+        
+        for m in data:
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            lat, lon = 0, 0
+            if m.location:
+                pt = to_shape(m.location)
+                lat, lon = pt.y, pt.x
+            
+            writer.writerow([
+                m.id, 
+                m.device_id, 
+                m.user_id, 
+                m.network_type, 
+                m.rsrp, 
+                m.rsrq, 
+                m.sinr, 
+                m.rssi, 
+                m.status, 
+                lat, 
+                lon, 
+                m.recorded_at.isoformat() if m.recorded_at else ""
+            ])
+            output.seek(0)
+            yield output.read()
+
+    response = StreamingResponse(iter_csv(measurements), media_type="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=senzor_measurements.csv"
+    return response
 
 @app.delete("/api/v1/admin/clear-users")
 def clear_non_admin_users(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
