@@ -1108,9 +1108,13 @@ def view_data(db: Session = Depends(database.get_db)):
         <tr>
             <td>{m.id}</td>
             <td style="color: var(--text-muted); font-size: 11px;">{m.recorded_at.strftime('%Y-%m-%d %H:%M')}</td>
-            <td><code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 11px;">{m.device_id[:12]}...</code></td>
+            <td><code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 11px;">{m.device_id[:8]}...</code></td>
             <td><span class="badge badge-user">{m.network_type}</span></td>
             <td style="font-weight: 700;">{m.rsrp}</td>
+            <td style="color: var(--text-muted); font-size: 12px;">{m.rsrq}</td>
+            <td style="color: var(--text-muted); font-size: 12px;">{m.sinr}</td>
+            <td style="color: var(--text-muted); font-size: 12px;">{m.rssi}</td>
+            <td style="color: var(--text-muted); font-size: 12px;">{m.cell_id}</td>
             <td><span style="color:{status_color}; font-size: 12px; font-weight: 600;">{m.status}</span></td>
             <td style="color: var(--text-muted); font-size: 11px;">{pt.y:.4f}, {pt.x:.4f}</td>
         </tr>
@@ -1128,11 +1132,15 @@ def view_data(db: Session = Depends(database.get_db)):
                     <tr>
                         <th>ID</th>
                         <th>Timestamp</th>
-                        <th>Resource ID</th>
-                        <th>Network</th>
-                        <th>RSRP (dBm)</th>
-                        <th>Class</th>
-                        <th>Global Coordinates</th>
+                        <th>Device</th>
+                        <th>Net</th>
+                        <th>RSRP</th>
+                        <th>RSRQ</th>
+                        <th>SINR</th>
+                        <th>RSSI</th>
+                        <th>Cell ID</th>
+                        <th>Status</th>
+                        <th>Coords</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1219,6 +1227,7 @@ def view_admin(db: Session = Depends(database.get_db)):
         <div class="tab-nav">
             <button class="tab-btn active" onclick="switchTab('users')"><i class="fas fa-users"></i> Users</button>
             <button class="tab-btn" onclick="switchTab('system')"><i class="fas fa-server"></i> System Health</button>
+            <button class="tab-btn" onclick="switchTab('help')"><i class="fas fa-question-circle"></i> Help & Guide</button>
         </div>
 
         <!-- User Management -->
@@ -1292,6 +1301,65 @@ def view_admin(db: Session = Depends(database.get_db)):
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Help & Guide -->
+        <div id="help" class="tab-content">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">
+                
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-users-cog" style="color: var(--primary);"></i> User Management</h3>
+                    <p style="color: var(--text-muted); font-size: 13px; line-height: 1.6;">
+                        This section lists all registered accounts. 
+                        <br><br>
+                        <ul style="padding-left: 20px; font-size: 13px; color: var(--text-muted);">
+                            <li><b>Identity:</b> Displays username, email, and internal ID.</li>
+                            <li><b>Role:</b> Users can view their own data. <span style="color: #c4b5fd;">Admins</span> have full system access.</li>
+                            <li><b>Contribution:</b> The progress bar shows relative data contribution.</li>
+                        </ul>
+                    </p>
+                </div>
+
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-heartbeat" style="color: #10b981;"></i> System Health</h3>
+                    <p style="color: var(--text-muted); font-size: 13px; line-height: 1.6;">
+                        Real-time status of the platform's core components.
+                        <br><br>
+                        <ul style="padding-left: 20px; font-size: 13px; color: var(--text-muted);">
+                            <li><b>Backend:</b> Indicates if the FastAPI engine is running optimally.</li>
+                            <li><b>Database:</b> PostGIS connection status and query latency (should be < 50ms).</li>
+                            <li><b>Storage:</b> Verifies that the persistent volume is writable.</li>
+                        </ul>
+                    </p>
+                </div>
+
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-file-export" style="color: #f59e0b;"></i> Data Handling</h3>
+                    <p style="color: var(--text-muted); font-size: 13px; line-height: 1.6;">
+                        Tools for exporting or resetting system data.
+                        <br><br>
+                        <ul style="padding-left: 20px; font-size: 13px; color: var(--text-muted);">
+                            <li><b>Export CSV:</b> Downloads a full dump of <code>core_networkmeasurement</code> table.</li>
+                            <li><b>Clear Measurements:</b> <span style="color: #ff4b2b;">WARNING:</span> Permanently deletes all signal data. Use for resetting after test runs.</li>
+                            <li><b>Clear Users:</b> Removes all accounts except Admin. Useful for cleaning up test registrations.</li>
+                        </ul>
+                    </p>
+                </div>
+
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3><i class="fas fa-map-marked-alt" style="color: #ec4899;"></i> Visualization</h3>
+                    <p style="color: var(--text-muted); font-size: 13px; line-height: 1.6;">
+                        Understanding the Live Map and Analytics.
+                        <br><br>
+                        <ul style="padding-left: 20px; font-size: 13px; color: var(--text-muted);">
+                            <li><b>Heatmap:</b> Aggregated signal quality. <span style="color:#10b981;">Green</span> is excellent, <span style="color:#ff4b2b;">Red</span> is poor.</li>
+                            <li><b>Coverage Holes:</b> Automatically detected areas with significantly poor signal (RSRP < -110 dBm).</li>
+                            <li><b>Markers:</b> Click individual points to see detailed metrics (SINR, RSRQ).</li>
+                        </ul>
+                    </p>
+                </div>
+
             </div>
         </div>
     </div>
