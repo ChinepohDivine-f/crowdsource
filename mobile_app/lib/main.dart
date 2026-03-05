@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/dashboard_page.dart';
+import 'services/auth_service.dart';
+import 'theme/app_theme.dart';
 
-/// Entry point of the Crowdsensing Application.
-/// 
-/// This file is now cleaner, serving as the app orchestrator while 
-/// specialized logic resides in the 'screens' and 'services' directories.
 void main() {
-  runApp(const CrowdsourceApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()..loadUser()),
+      ],
+      child: const CrowdsourceApp(),
+    ),
+  );
 }
 
 class CrowdsourceApp extends StatelessWidget {
@@ -16,13 +25,32 @@ class CrowdsourceApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Crowdsensed Drive Test',
-      theme: ThemeData(
-        brightness: Brightness.dark, // Premium dark theme as requested
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: const DashboardPage(),
+      title: 'Senzor - Network Intelligence',
+      theme: AppTheme.darkTheme,
+      home: const AuthWrapper(),
+    );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  _AuthWrapperState createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthService>(
+      builder: (context, auth, _) {
+        // Show Splash Screen while authentication status is being determined
+        if (!auth.isInitialized) {
+           return const SplashScreen();
+        }
+        // Once loaded, decide where to go
+        return auth.isAuthenticated ? const DashboardPage() : const LoginScreen();
+      },
     );
   }
 }

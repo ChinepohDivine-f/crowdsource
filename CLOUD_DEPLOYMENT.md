@@ -29,9 +29,14 @@ Render allows you to host web services for free.
 5.  **Configure**:
     - **Runtime**: Python
     - **Build Command**: `pip install -r backend/requirements.txt`
-    - **Start Command**: `uvicorn backend.main:app --host 0.0.0.0 --port 10000`
+    - **Start Command**: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
 6.  **Environment Variables**: In Render settings, add:
     - `DATABASE_URL`: (The connection string you copied from Supabase).
+    - `SECRET_KEY`: (Generate a random string for JWT security).
+7.  **Initialize Admin**:
+    - In the Render Dashboard, go to **Shell**.
+    - Run: `python backend/init_admin.py`
+    - Login at `/view/login` with `admin@senzor.com` / `Senzor2026`.
 
 ---
 

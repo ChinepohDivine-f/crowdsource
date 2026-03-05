@@ -1,4 +1,4 @@
-# Crowdsensed Drive Test Application
+# Senzor: Crowdsensed Drive Test Platform
 
 A professional Mobile-to-Cloud crowdsensing system designed for cellular network monitoring and analysis. This platform allows for real-time capture of network metrics like RSRP and SINR, coupled with GPS data, to identify coverage holes and optimize network performance.
 
@@ -7,7 +7,9 @@ A professional Mobile-to-Cloud crowdsensing system designed for cellular network
 -   **Real-time Data Collection**: Captures signal strength (RSRP), signal quality (SINR), network type, and cell ID.
 -   **GPS Integration**: Automatically tags every measurement with high-precision GPS coordinates.
 -   **Interactive Map**: Visualizes collected data points on an OpenStreetMap with color-coded markers (Red for coverage holes, Green for good signal).
--   **Automated Sync**: Periodically synchronizes local data with a central cloud database.
+-   **User Management**: Role-based authentication (Admin/User) and user-specific data tracking.
+-   **Admin Panel**: Web-based dashboard for managing users and viewing global network statistics. Access at `http://localhost:8000/view/login`.
+-   **Automated Sync**: The mobile app caches data offline and allows manual syncing to the central cloud database.
 -   **Analytics**: Backend logic to identify "Coverage Holes" where signal strength drops below functional thresholds.
 
 ## 🏗 How it was Made (Architecture)
@@ -47,13 +49,24 @@ docker run --name crowdsource_db \
     source venv/bin/activate  # On Windows: venv\Scripts\activate
     ```
 3.  Install dependencies: `pip install -r requirements.txt`
-4.  Run the server: `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
+4.  **Initialize Admin User**: `python backend/init_admin.py` (Default: `admin@senzor.com` / `Senzor2026`)
+5.  Run the server: `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
 
 ### Step 3: Run the Mobile App (Flutter)
 1.  Navigate to the mobile folder: `cd mobile_app`
 2.  **Configuration**: Update your Local IP address in `lib/services/sync_service.dart` to point to the FastAPI server.
 3.  Install dependencies: `flutter pub get`
 4.  Run the app: `flutter run`
+
+---
+
+---
+
+## ☁️ Deployment
+
+Want to run this properly on a server?
+- **[Standard Deployment Guide (VPS)](DEPLOYMENT.md)** - For DigitalOcean, AWS, etc.
+- **[Free Hosting Guide (Zero Cost)](FREE_HOSTING.md)** - Using Supabase and Render.
 
 ---
 

@@ -1,211 +1,371 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_theme.dart';
 
-/// HelpPage: Provides user documentation and data interpretation guides.
-/// 
-/// This screen is essential for fulfilling the assignment requirement of 
-/// explaining the crowdsensing logic and metric significance to the user.
 class HelpPage extends StatelessWidget {
   const HelpPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.backgroundDark,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Help & Interpretation'),
+        title: const Text('Help & Documentation'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+        titleTextStyle: const TextStyle(
+          color: Colors.white, 
+          fontSize: 20, 
+          fontWeight: FontWeight.bold
+        ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionTitle('📡 What is Crowdsensing?'),
-              _buildContentText(
-                'This app turns your mobile device into a network probe. By moving around, you help map cellular network performance in real-time. This "crowdsensed" data is used to identify where network upgrades are needed.',
-              ),
-              const Divider(height: 40),
-              
-              _buildSectionTitle('📊 Understanding Metrics'),
-              _buildMetricItem(
-                'RSRP (Signal Strength)',
-                'Measures the power of the received signal. Higher is better.',
-                [
-                  'Excellent: > -80 dBm',
-                  'Good: -80 to -90 dBm',
-                  'Fair: -90 to -110 dBm',
-                  'Poor (Hole): < -110 dBm (Red Marker)',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'SINR (Signal Quality)',
-                'Measures the quality of the signal relative to noise. Higher is better.',
-                [
-                  'Excellent: > 20 dB',
-                  'Good: 13 to 20 dB',
-                  'Fair: 0 to 13 dB',
-                  'Poor: < 0 dB',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'RSRQ (Signal Quality)',
-                'Indicates the quality of the received signal. Higher is better.',
-                [
-                  'Excellent: > -10 dB',
-                  'Good: -10 to -15 dB',
-                  'Fair: -15 to -20 dB',
-                  'Poor: < -20 dB',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'RSSI (Total Received Power)',
-                'Total power received by the antenna. Typically used for 4G/LTE.',
-                [
-                  'Excellent: > -65 dBm',
-                  'Good: -65 to -75 dBm',
-                  'Fair: -75 to -85 dBm',
-                  'Poor: < -85 dBm',
-                ],
-              ),
-              const Divider(height: 40),
-              
-              _buildSectionTitle('📍 Map Interpretation'),
-              _buildContentText(
-                '• Green Markers: Indicate good coverage (RSRP > -110 dBm).\n'
-                '• Red Markers: Indicate "Coverage Holes" where signal strength is critically low.\n'
-                '• Current Location: The map centers on your position during collection.',
-              ),
-              const Divider(height: 40),
+      body: Stack(
+        children: [
+          // Background Elements
+          Positioned(
+            top: -150,
+            right: -100,
+            child: _buildBlurCircle(200, AppColors.primaryBlue.withOpacity(0.1)),
+          ),
+          Positioned(
+            bottom: -50,
+            left: -50,
+            child: _buildBlurCircle(150, AppColors.accentCyan.withOpacity(0.1)),
+          ),
 
-              _buildSectionTitle('⚙️ How to use'),
-              _buildContentText(
-                '1. Tap START COLLECTION to begin tracking.\n'
-                '2. Data is saved locally every 10 seconds.\n'
-                '3. Use the SYNC button (top right dashboard) to upload data to the central database when online.',
-              ),
-              const Divider(height: 40),
-
-              _buildSectionTitle('📶 Collection Modes'),
-              _buildMetricItem(
-                'Provider Mode (Recommended)',
-                'Standard mode for drive testing.',
-                [
-                  'Requires an active SIM card.',
-                  'Only records data when the device is registered with a carrier.',
-                  'Prevents "ghost" readings by stopping when signal is officially lost.',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'Raw Mode (Advanced)',
-                'Capture ambient signal without a SIM.',
-                [
-                  'Bypasses SIM checks.',
-                  'Records signal info from any visible tower (like SOS mode).',
-                  'Useful for identifying ambient coverage when no service is active.',
-                ],
-              ),
-              const Divider(height: 40),
-
-              _buildSectionTitle('🌐 Web Dashboard'),
-              _buildContentText(
-                'Once your data is synced, you can view the global heatmap and analytics on the web interface. This dashboard features an interactive map where you can filter results by device name and timestamp.',
-              ),
-              const Divider(height: 40),
-
-              _buildSectionTitle('❓ Troubleshooting & Rules of Thumb'),
-              _buildMetricItem(
-                'No Signal Recorded?',
-                'If you see missing data or "N/A":',
-                [
-                  'Location Off: Ensure GPS is enabled. Without location, we cannot tag the signal.',
-                  'Permissions: Verify the app has "Always Allow" or "While Using" location access.',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'No SIM Card / Airplane Mode',
-                'The app requires an active cellular connection to measure signal.',
-                [
-                  'No SIM: Value will be 0, -1, or N/A. We cannot measure a network that isn\'t there.',
-                  'Airplane Mode: All radios are off. No data will be collected, and the app may show "N/A".',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'Best Practices',
-                'For the best drive test results:',
-                [
-                  'Speed: Drive at a steady moderate speed (e.g., 30-50 km/h) for accurate sampling.',
-                  'Mounting: Place phone on dashboard for clear GPS view.',
-                  'Screen: Keep the app open (screen on) to ensure uninterrupted collection.',
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildMetricItem(
-                'Good Rules of Thumb (RF)',
-                'Typical target values for a healthy network:',
-                [
-                  'RSRP > -90 dBm (Strong signal)',
-                  'SINR > 13 dB (Low interference)',
-                  'RSRQ > -12 dB (Reliable quality)',
-                  'RSSI > -70 dBm (High total power)',
-                ],
-              ),
-              const SizedBox(height: 40),
-              
-              Center(
-                child: Text(
-                  'v1.0.0 - Crowdsensed Project',
-                  style: TextStyle(color: Colors.white.withOpacity(0.5)),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(AppTheme.spacingM),
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: AppTheme.spacingXL),
+                
+                _buildSection(
+                  context,
+                  icon: Icons.rocket_launch,
+                  title: 'Getting Started',
+                  children: [
+                    _buildStep(context, '1', 'Ensure Location & Phone permissions are granted'),
+                    _buildStep(context, '2', 'Enable mobile data (LTE or 5G)'),
+                    _buildStep(context, '3', 'Tap "Start Monitoring" on the dashboard'),
+                    _buildStep(context, '4', 'Move around to collect data points'),
+                    _buildStep(context, '5', 'Tap "Stop Collection" when finished'),
+                    _buildStep(context, '6', 'Tap "Sync Data" to upload to the server'),
+                  ],
                 ),
+                
+                _buildSection(
+                  context,
+                  icon: Icons.analytics,
+                  title: 'Network Metrics',
+                  children: [
+                    _buildMetricCard(
+                      context,
+                      'RSRP',
+                      'ref_signal',
+                      'Signal Strength',
+                      'Measures signal power. Higher is better.\n• Excellent: > -80 dBm\n• Good: -80 to -100 dBm\n• Fair: -100 to -110 dBm\n• Poor (Hole): < -110 dBm',
+                      AppColors.primaryBlue,
+                    ),
+                    _buildMetricCard(
+                      context,
+                      'SINR',
+                      'interference',
+                      'Signal Quality',
+                      'Signal vs Noise ratio. Higher is better.\n• Excellent: > 20 dB\n• Good: 13 to 20 dB\n• Fair: 0 to 13 dB\n• Poor: < 0 dB',
+                      AppColors.accentCyan,
+                    ),
+                    _buildMetricCard(
+                      context,
+                      'RSRQ',
+                      'quality',
+                      'Received Quality',
+                      'Overall channel quality.\n• Excellent: > -10 dB\n• Good: -10 to -15 dB\n• Fair: -15 to -20 dB\n• Poor: < -20 dB',
+                      Colors.purpleAccent,
+                    ),
+                  ],
+                ),
+                
+                _buildSection(
+                  context,
+                  icon: Icons.cloud_sync,
+                  title: 'Data Synchronization',
+                  children: [
+                    _buildInfoCard(
+                      context,
+                      'Storage',
+                      'Data is stored securely on your device until synced.',
+                      Icons.sd_storage,
+                    ),
+                    _buildInfoCard(
+                      context,
+                      'Bandwidth',
+                      'Syncing is optimized. 1000 points < 100KB.',
+                      Icons.data_usage,
+                    ),
+                    _buildInfoCard(
+                      context,
+                      'Analysis',
+                      'Uploaded data helps identify coverage holes globally.',
+                      Icons.public,
+                    ),
+                  ],
+                ),
+                
+                _buildSection(
+                  context,
+                  icon: Icons.help_outline,
+                  title: 'FAQ',
+                  children: [
+                    _buildFAQ(
+                      context,
+                      'Why is RSRP "-140"?',
+                      'Phone cannot detect signal. Check SIM status or Airplane mode.',
+                    ),
+                    _buildFAQ(
+                      context,
+                      'Sync Failed?',
+                      'Check internet connection. Server might be sleeping (free tier).',
+                    ),
+                    _buildFAQ(
+                      context,
+                      'App Crashes?',
+                      'Ensure all permissions (Location, Phone) are granted in settings.',
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: AppTheme.spacingXL),
+                _buildFooter(context),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Column(
+      children: [
+        const Icon(Icons.help_center_outlined, size: 60, color: AppColors.accentCyan),
+        const SizedBox(height: 16),
+        Text(
+          'Welcome to Senzor',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Crowdsourced Network Intelligence',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSection(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.cardBorder.withOpacity(0.5)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: AppColors.primaryBlue, size: 24),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          initiallyExpanded: title == 'Getting Started',
+          iconColor: Colors.white70,
+          collapsedIconColor: Colors.white70,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStep(BuildContext context, String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: AppColors.accentCyan,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              number,
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+    BuildContext context,
+    String abbr,
+    String subtitle,
+    String fullTitle,
+    String description,
+    Color color,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  abbr,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                fullTitle,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            description,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+          ),
+        ],
       ),
     );
   }
 
-  /// Helper to build consistent section titles
-  Widget _buildSectionTitle(String title) {
+  Widget _buildInfoCard(BuildContext context, String title, String description, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.textTertiary, size: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFAQ(BuildContext context, String question, String answer) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-          color: Colors.blueAccent,
-        ),
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(question, style: const TextStyle(color: AppColors.accentCyan, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(answer, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        ],
       ),
     );
   }
 
-  /// Helper to build consistent body text
-  Widget _buildContentText(String text) {
-    return Text(
-      text,
-      style: const TextStyle(fontSize: 16, height: 1.5),
+  Widget _buildFooter(BuildContext context) {
+    return Column(
+      children: [
+        const Icon(Icons.favorite, color: AppColors.error, size: 24),
+        const SizedBox(height: 12),
+        const Text(
+          'Mapping the world, one signal at a time.',
+          style: TextStyle(color: AppColors.textTertiary, fontStyle: FontStyle.italic),
+        ),
+        const SizedBox(height: 40),
+      ],
     );
   }
-
-  /// Helper to build metric descriptions with ranges
-  Widget _buildMetricItem(String title, String description, List<String> ranges) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        Text(description, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-        const SizedBox(height: 8),
-        ...ranges.map((range) => Padding(
-              padding: const EdgeInsets.only(left: 8, bottom: 4),
-              child: Text('• $range', style: const TextStyle(fontSize: 14)),
-            )),
-      ],
+  
+  Widget _buildBlurCircle(double radius, Color color) {
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [
+          BoxShadow(
+            color: color,
+            blurRadius: 50,
+            spreadRadius: 20,
+          ),
+        ],
+      ),
     );
   }
 }

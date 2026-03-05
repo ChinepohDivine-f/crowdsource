@@ -1,18 +1,20 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 import '../services/telephony_service.dart';
 import '../services/location_service.dart';
 import '../services/database_helper.dart';
 import '../services/sync_service.dart';
 import 'help_page.dart';
+import 'profile_screen.dart';
+import '../theme/app_colors.dart';
 
 /// DashboardPage: The main interface for network data collection and visualization.
-/// 
-/// CITENOTE: This page integrates location, telephony, and database services 
-/// to fulfill the real-time crowdsensing requirements of the project.
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -20,56 +22,90 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin {
   final TelephonyService _telephony = TelephonyService();
   final LocationService _location = LocationService();
   final SyncService _sync = SyncService();
 
   bool _isCollecting = false;
   bool _isRawMode = false;
-  String _deviceName = "Driver_Phone";
+  bool _isSyncing = false;
+  int _pendingMeasurements = 0;
+  String _displayName = "Loading..."; // Changed from _deviceName shorthand
   Timer? _timer;
   Map<String, dynamic>? _currentInfo;
   ll.LatLng? _currentPosition;
+  bool _isLoadingLocation = false;
   
-  // CITENOTE: List used for OSM markers (flutter_map requirement)
   final List<Marker> _markers = [];
   final MapController _mapController = MapController();
+  late AnimationController _fadeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _updatePendingCount();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+      value: 1.0,
+    );
+    
+    // Load User Profile for display name
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthService>(context, listen: false);
+      setState(() {
+         if (auth.currentUser?.username != null && auth.currentUser!.username!.isNotEmpty) {
+           _displayName = auth.currentUser!.username!;
+         } else {
+           _displayName = auth.currentUser?.email ?? "Unknown User";
+         }
+      });
+    });
+  }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _fadeController.dispose();
     super.dispose();
   }
 
-  /// Starts or stops the background data collection timer.
+  Future<void> _updatePendingCount() async {
+    final measurements = await DatabaseHelper.instance.queryAllMeasurements();
+    setState(() {
+      _pendingMeasurements = measurements.length;
+    });
+  }
+
   void _toggleCollection() {
     setState(() {
       _isCollecting = !_isCollecting;
       if (_isCollecting) {
-        // CITENOTE: Data collected every 10 seconds as per project specs.
-        _timer = Timer.periodic(const Duration(seconds: 10), (timer) => _collectData());
+        _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
+          _collectData();
+        });
       } else {
         _timer?.cancel();
       }
     });
   }
 
-  /// Orchestrates data capture from sensors and saves to local database.
   Future<void> _collectData() async {
     try {
       final pos = await _location.getCurrentLocation();
       final radio = await _telephony.getRadioInfo(rawMode: _isRawMode);
+      final now = DateTime.now();
 
       if (pos != null && radio != null) {
-        final now = DateTime.now();
-        final rsrp = radio['rsrp'];
-        final status = (rsrp != null && rsrp > -110) ? 'Good' : 'Hole';
+        // Safe access now that we checked for null
+        final rsrp = radio['rsrp'] as int? ?? -140;
+        final status = _getSignalStatus(rsrp); 
 
         final measurement = {
-          'device_id': _deviceName,
+          'device_id': _displayName,
           'network_type': radio['type'],
-          'rsrp': radio['rsrp'],
+          'rsrp': rsrp,
           'rsrq': radio['rsrq'],
           'rssi': radio['rssi'],
           'sinr': radio['sinr'],
@@ -80,58 +116,80 @@ class _DashboardPageState extends State<DashboardPage> {
           'timestamp': DateFormat('yyyy-MM-ddTHH:mm:ss').format(now),
         };
 
-        // CITENOTE: Persistent local storage ensures data isn't lost offline.
-      await DatabaseHelper.instance.insertMeasurement(measurement);
-      
-      final newPos = ll.LatLng(pos.latitude, pos.longitude);
-      final newMarker = _createMarker(
-        pos.latitude, 
-        pos.longitude, 
-        radio['rsrp'],
-        radio['rsrq'],
-        radio['rssi'],
-      );
-
-      setState(() {
-        _currentInfo = radio;
-        _currentPosition = newPos;
-        _markers.add(newMarker);
-      });
-
-      // Safely move map if controller is ready
-      _moveMap(newPos);
-
-      // CITENOTE: Attempt background synchronization with FastAPI backend.
-      _sync.syncData();
-    } else {
-      setState(() {
-        _currentInfo = null; // Clear UI info if connection is lost
-      });
-      if (mounted) {
-        String missing = "";
-        if (pos == null) missing += "Location ";
-        if (radio == null) missing += "Radio/SIM ";
-        debugPrint("Data collection skipped: Missing $missing");
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Collection skipped: Missing $missing'), backgroundColor: Colors.yellow.shade700, duration: const Duration(seconds: 1)),
+        await DatabaseHelper.instance.insertMeasurement(measurement);
+        await _updatePendingCount();
+        
+        final newPos = ll.LatLng(pos.latitude, pos.longitude);
+        final newMarker = _createMarker(
+          pos.latitude, 
+          pos.longitude, 
+          rsrp,
+          radio['rsrq'],
+          radio['rssi'],
+          radio['sinr'],
+          radio['type'],
         );
+
+        setState(() {
+          _currentInfo = radio;
+          _currentPosition = newPos;
+          _markers.add(newMarker);
+        });
+        
+        _moveMap(newPos);
+      } else {
+        // Handle null cases if needed
       }
-    }
     } catch (e) {
       debugPrint("Error collecting data: $e");
-      if (mounted && _isCollecting) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Collection error: $e'), backgroundColor: Colors.orange),
-        );
-      }
     }
   }
 
-  /// Creates a color-coded marker based on signal strength.
-  Marker _createMarker(double lat, double lon, int rsrp, [int? radioRsrq, int? radioRssi]) {
-    final now = DateTime.now();
-    final timeStr = DateFormat('HH:mm:ss').format(now);
-    
+  String _getSignalStatus(int rsrp) {
+    if (rsrp > -90) return 'Excellent';
+    if (rsrp > -105) return 'Good';
+    if (rsrp > -115) return 'Fair';
+    return 'Poor';
+  }
+
+  Color _getSignalColor(int rsrp) {
+    if (rsrp > -90) return AppColors.signalExcellent; // Excellent
+    if (rsrp > -105) return AppColors.signalGood; // Good
+    if (rsrp > -115) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  // Quality assessment for RSRQ (Reference Signal Received Quality)
+  Color _getRsrqColor(int? rsrq) {
+    if (rsrq == null) return AppColors.textTertiary;
+    if (rsrq > -10) return AppColors.signalExcellent; // Excellent
+    if (rsrq > -15) return AppColors.signalGood; // Good
+    if (rsrq > -20) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  // Quality assessment for SINR (Signal to Interference plus Noise Ratio)
+  Color _getSinrColor(int? sinr) {
+    if (sinr == null) return AppColors.textTertiary;
+    if (sinr > 20) return AppColors.signalExcellent; // Excellent
+    if (sinr > 13) return AppColors.signalGood; // Good
+    if (sinr > 0) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  // Quality assessment for RSSI (Received Signal Strength Indicator)
+  Color _getRssiColor(int? rssi) {
+    if (rssi == null) return AppColors.textTertiary;
+    if (rssi > -65) return AppColors.signalExcellent; // Excellent
+    if (rssi > -75) return AppColors.signalGood; // Good
+    if (rssi > -85) return AppColors.signalFair; // Fair
+    return AppColors.signalPoor; // Poor
+  }
+
+  Marker _createMarker(double lat, double lon, int rsrp, [int? rsrq, int? rssi, int? sinr, String? type]) {
+    final color = _getSignalColor(rsrp);
+    final timeStr = DateFormat('HH:mm:ss').format(DateTime.now());
+
     return Marker(
       point: ll.LatLng(lat, lon),
       width: 40,
@@ -141,18 +199,20 @@ class _DashboardPageState extends State<DashboardPage> {
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Measurement Details'),
+              backgroundColor: AppColors.surfaceDark,
+              title: const Text('Signal Details', style: TextStyle(color: Colors.white)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Time: $timeStr'),
-                  Text('RSRP: $rsrp dBm'),
-                  Text('RSRQ: ${radioRsrq ?? "N/A"} dB'),
-                  Text('RSSI: ${radioRssi ?? "N/A"} dBm'),
-                  Text('Status: ${rsrp < -110 ? "Coverage Hole" : "Good Signal"}'),
-                  Text('Lat: ${lat.toStringAsFixed(5)}'),
-                  Text('Lon: ${lon.toStringAsFixed(5)}'),
+                  _buildDetailRow('Time', timeStr),
+                  _buildDetailRow('Network', type ?? 'Unknown'),
+                  _buildDetailRow('RSRP', '$rsrp dBm', valueColor: color),
+                  _buildDetailRow('RSRQ', '${rsrq ?? "N/A"} dB'),
+                  _buildDetailRow('RSSI', '${rssi ?? "N/A"} dBm'),
+                  _buildDetailRow('SINR', '${sinr ?? "N/A"} dB'),
+                  _buildDetailRow('Quality', _getSignalStatus(rsrp), valueColor: color),
+                  _buildDetailRow('Location', '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}'),
                 ],
               ),
               actions: [
@@ -165,314 +225,414 @@ class _DashboardPageState extends State<DashboardPage> {
           );
         },
         child: Icon(
-          Icons.location_on,
+          Icons.location_pin,
           size: 40,
-          // CITENOTE: Threshold of -110 dBm used to identify coverage holes.
-          color: rsrp < -110 ? Colors.red : Colors.green,
-        ),
-      ),
-    );
-  }
-
-  /// Safely moves the map to a new position if the controller is ready.
-  void _moveMap(ll.LatLng position) {
-    try {
-      _mapController.move(position, 15.0);
-    } catch (e) {
-      debugPrint("MapController not ready yet: $e");
-    }
-  }
-
-  @Deprecated('Use _createMarker instead to avoid redundant setState')
-  void _addMarker(double lat, double lon, int rsrp, [int? rsrq, int? rssi]) {
-    final marker = _createMarker(lat, lon, rsrp, rsrq, rssi);
-    setState(() {
-      _markers.add(marker);
-      _moveMap(ll.LatLng(lat, lon));
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Crowdsensed Drive Test'),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const HelpPage()),
-            ),
-            icon: const Icon(Icons.help_outline),
-            tooltip: 'Help & Interpretation',
-          ),
-          IconButton(
-            onPressed: _showChangeNameDialog,
-            icon: const Icon(Icons.edit, color: Colors.blueAccent),
-            tooltip: 'Change Device Name',
-          ),
-          IconButton(
-            onPressed: _handleSync,
-            icon: const Icon(Icons.sync),
-            tooltip: 'Sync Data',
-          ),
-          IconButton(
-            onPressed: _showResetConfirmation,
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Clear Map & Data',
-            color: Colors.redAccent,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              flex: 3,
-              child: Stack(
-                children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: const ll.LatLng(9.0820, 8.6753), // Regional focus
-                      initialZoom: 6,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.crowdsource.mobile_app',
-                      ),
-                      MarkerLayer(markers: _markers),
-                    ],
-                  ),
-                  
-                  // Map Legend Overlay
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildLegendItem(Colors.green, 'Good Signal'),
-                          const SizedBox(height: 4),
-                          _buildLegendItem(Colors.red, 'Coverage Hole'),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Active Collection Indicator
-                  if (_isCollecting)
-                    Positioned(
-                      top: 10,
-                      left: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const _PulseIndicator(),
-                            const SizedBox(width: 5),
-                            const Text(
-                              'COLLECTING',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            
-            // Stats and Control Panel
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Mode Toggle
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('Provider Mode', style: TextStyle(fontSize: 12)),
-                        Switch(
-                          value: _isRawMode,
-                          onChanged: (val) => setState(() => _isRawMode = val),
-                          activeColor: Colors.blueAccent,
-                        ),
-                        const Text('Raw Mode (No SIM)', style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 10),
-
-                    // Horizontal scroll for stats to avoid screen overflow
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildStatCard(
-                            'Network', 
-                            _currentInfo?['type'] ?? 'N/A',
-                            Colors.white,
-                          ),
-                          const SizedBox(width: 24),
-                          _buildStatCard(
-                            'RSRP', 
-                            '${_currentInfo?['rsrp'] ?? 'N/A'} dBm',
-                            _getRSRPColor(_currentInfo?['rsrp']),
-                          ),
-                          const SizedBox(width: 24),
-                          _buildStatCard(
-                            'SINR', 
-                            '${_currentInfo?['sinr'] ?? 'N/A'} dB',
-                            _getSINRColor(_currentInfo?['sinr']),
-                          ),
-                          const SizedBox(width: 24),
-                          _buildStatCard(
-                            'RSRQ', 
-                            '${_currentInfo?['rsrq'] ?? 'N/A'} dB',
-                            _getRSRQColor(_currentInfo?['rsrq']),
-                          ),
-                          const SizedBox(width: 24),
-                          _buildStatCard(
-                            'RSSI', 
-                            '${_currentInfo?['rssi'] ?? 'N/A'} dBm',
-                            _getRSSIColor(_currentInfo?['rssi']),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // Main Action Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _toggleCollection,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isCollecting ? Colors.red.shade700 : Colors.green.shade700,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          _isCollecting ? 'STOP COLLECTION' : 'START COLLECTION',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
+          color: color,
+          shadows: [
+            Shadow(blurRadius: 2, color: Colors.black.withOpacity(0.5), offset: const Offset(1, 1))
           ],
         ),
       ),
     );
   }
 
-  /// Helper to build stat summary cards
-  Widget _buildStatCard(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text(
-          value, 
-          style: TextStyle(
-            fontSize: 18, 
-            color: color,
-            fontWeight: color != Colors.white ? FontWeight.bold : FontWeight.normal,
+  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textSecondary)),
+          Text(value, style: TextStyle(color: valueColor ?? Colors.white, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  void _moveMap(ll.LatLng position) {
+    try {
+      _mapController.move(position, 16.0);
+    } catch (e) {
+      debugPrint("MapController not ready yet: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundDark,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent, 
+        elevation: 0,
+        centerTitle: true,
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceDark.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.cardBorder.withOpacity(0.5)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.radar, color: AppColors.primaryBlue, size: 20),
+              SizedBox(width: 8),
+              Text('SENZOR', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+            ],
           ),
         ),
-      ],
-    );
-  }
+        actions: [
+           _buildAppBarIconButton(
+            icon: Icons.person_outline, 
+            tooltip: 'Profile',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const ProfileScreen()))
+          ),
+          Stack(
+            children: [
+              _buildAppBarIconButton(
+                icon: _isSyncing ? Icons.sync : Icons.cloud_upload_outlined,
+                tooltip: 'Sync Data',
+                onPressed: _isSyncing ? null : _handleSync,
+                isLoading: _isSyncing,
+              ),
+              if (_pendingMeasurements > 0 && !_isSyncing)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentCyan,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.backgroundDark, width: 1.5),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    child: Text(
+                      '$_pendingMeasurements',
+                      style: const TextStyle(
+                        color: AppColors.backgroundDark,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      drawer: _buildDrawer(),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Map Layer
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: const ll.LatLng(9.0820, 8.6753),
+                initialZoom: 6,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.crowdsource.mobile_app',
+                ),
+                MarkerLayer(markers: _markers),
+              ],
+            ),
 
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            // Map Controls (Relocated to the middle right)
+            Positioned(
+              right: 16,
+              top: MediaQuery.of(context).size.height * 0.3,
+              child: Column(
+                children: [
+                  _buildMapControlBtn(
+                    _isLoadingLocation ? Icons.hourglass_empty : Icons.my_location,
+                    _isLoadingLocation ? null : () async {
+                      setState(() => _isLoadingLocation = true);
+                      try {
+                        final pos = await _location.getCurrentLocation();
+                        if (pos != null) _moveMap(ll.LatLng(pos.latitude, pos.longitude));
+                      } finally {
+                        if (mounted) setState(() => _isLoadingLocation = false);
+                      }
+                    },
+                    isLoading: _isLoadingLocation,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMapControlBtn(Icons.delete_outline, _showResetConfirmation, isDestructive: true),
+                ],
+              ),
+            ),
+
+            // Floating Network Type Badge (Top Right)
+            if (_currentInfo != null)
+              Positioned(
+                top: 80,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _getSignalColor(_currentInfo!['rsrp'] ?? -140),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.network_cell, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        _currentInfo!['type'] ?? 'Unknown',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Compact Metrics Container (Above Bottom Button) - Horizontally Scrollable
+            Positioned(
+              bottom: 90,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 90,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceDark.withOpacity(0.95),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.cardBorder, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildCompactMetric(
+                            'RSRP',
+                            '${_currentInfo?['rsrp'] ?? '--'}',
+                            _getSignalColor(_currentInfo?['rsrp'] ?? -140),
+                          ),
+                          _buildMetricDivider(),
+                          _buildCompactMetric(
+                            'RSRQ',
+                            '${_currentInfo?['rsrq'] ?? '--'}',
+                            _getRsrqColor(_currentInfo?['rsrq']),
+                          ),
+                          _buildMetricDivider(),
+                          _buildCompactMetric(
+                            'SINR',
+                            '${_currentInfo?['sinr'] ?? '--'}',
+                            _getSinrColor(_currentInfo?['sinr']),
+                          ),
+                          _buildMetricDivider(),
+                          _buildCompactMetric(
+                            'RSSI',
+                            '${_currentInfo?['rssi'] ?? '--'}',
+                            _getRssiColor(_currentInfo?['rssi']),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Bottom Start/Stop Button
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: SizedBox(
+                height: 60,
+                child: ElevatedButton(
+                  onPressed: _toggleCollection,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isCollecting ? AppColors.error : AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _isCollecting ? Icons.stop_circle : Icons.play_circle_filled,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _isCollecting ? 'STOP COLLECTION' : 'START MONITORING',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-      ],
+      ),
     );
   }
 
-  Color _getRSRPColor(dynamic value) {
-    if (value == null) return Colors.white;
-    int rsrp = value is int ? value : int.tryParse(value.toString()) ?? -120;
-    if (rsrp > -80) return Colors.greenAccent;
-    if (rsrp > -110) return Colors.yellowAccent;
-    return Colors.redAccent;
+  Widget _buildCompactMetric(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Color _getSINRColor(dynamic value) {
-    if (value == null) return Colors.white;
-    int sinr = value is int ? value : int.tryParse(value.toString()) ?? -10;
-    if (sinr > 13) return Colors.greenAccent;
-    if (sinr > 0) return Colors.yellowAccent;
-    return Colors.redAccent;
+  Widget _buildMetricDivider() {
+    return Container(
+      height: 40,
+      width: 1,
+      color: AppColors.divider,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+    );
   }
 
-  Color _getRSRQColor(dynamic value) {
-    if (value == null) return Colors.white;
-    int rsrq = value is int ? value : int.tryParse(value.toString()) ?? -20;
-    if (rsrq > -10) return Colors.greenAccent;
-    if (rsrq > -15) return Colors.yellowAccent;
-    return Colors.redAccent;
+  // Helper method removed (replaced by direct usage in build)
+  // Widget _buildLegendItem...
+
+  
+  // Drawer to house extra options like "Change Name" and "Help" to declutter UI
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: AppColors.backgroundDark,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Icon(Icons.radar, color: Colors.white, size: 48),
+                const SizedBox(height: 16),
+                const Text('Senzor', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(_displayName, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit, color: AppColors.textSecondary),
+            title: const Text('Change Device Name', style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context);
+              _showChangeNameDialog();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.help_outline, color: AppColors.textSecondary),
+            title: const Text('Help & Documentation', style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const HelpPage()));
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Raw Mode (No SIM)', style: TextStyle(color: Colors.white)),
+            subtitle: const Text('Collect ambient signals', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+            secondary: const Icon(Icons.developer_mode, color: AppColors.textSecondary),
+            value: _isRawMode,
+            onChanged: (val) => setState(() => _isRawMode = val),
+            activeColor: AppColors.primaryBlue,
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showChangeNameDialog() async {
     String? newName = await showDialog<String>(
       context: context,
       builder: (context) {
-        String input = _deviceName;
+        String input = _displayName;
         return AlertDialog(
-          title: const Text('Change Device Name'),
+          backgroundColor: AppColors.surfaceDark,
+          title: const Text('Change Device Name', style: TextStyle(color: Colors.white)),
           content: TextField(
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Enter new phone name'),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter new phone name',
+              hintStyle: const TextStyle(color: AppColors.textTertiary),
+              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.cardBorder)),
+              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
+            ),
             onChanged: (val) => input = val,
-            controller: TextEditingController(text: _deviceName),
+            controller: TextEditingController(text: _displayName),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, input),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue),
               child: const Text('Save'),
             ),
           ],
@@ -482,47 +642,43 @@ class _DashboardPageState extends State<DashboardPage> {
 
     if (newName != null && newName.trim().isNotEmpty) {
       setState(() {
-        _deviceName = newName.trim();
+        _displayName = newName.trim();
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Device name changed to: $_deviceName')),
+          SnackBar(content: Text('Device name changed to: $_displayName')),
         );
       }
     }
   }
 
-  Color _getRSSIColor(dynamic value) {
-    if (value == null) return Colors.white;
-    int rssi = value is int ? value : int.tryParse(value.toString()) ?? -100;
-    if (rssi > -65) return Colors.greenAccent;
-    if (rssi > -75) return Colors.yellowAccent;
-    return Colors.redAccent;
-  }
-
   Future<void> _handleSync() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Syncing data to cloud...'), duration: Duration(seconds: 1)),
-    );
+    setState(() => _isSyncing = true);
+    
+    // Haptic feedback could be added here
+    
     try {
       final success = await _sync.syncData();
       if (mounted) {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync successful!'), backgroundColor: Colors.green),
+            const SnackBar(content: Text('✅ Sync successful!'), backgroundColor: AppColors.success),
           );
+          await _updatePendingCount();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync failed! Check connection or server.'), backgroundColor: Colors.red),
+            const SnackBar(content: Text('❌ Sync failed! Check connection.'), backgroundColor: AppColors.error),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sync failed: $e'), backgroundColor: Colors.red),
+           SnackBar(content: Text('Sync error: $e'), backgroundColor: AppColors.error),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
@@ -530,18 +686,20 @@ class _DashboardPageState extends State<DashboardPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset Application?'),
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text('Reset Application?', style: TextStyle(color: Colors.white)),
         content: const Text(
-          'This will stop data collection, clear all markers from the map, and PERMANENTLY delete all unsynced data from your local database. This action cannot be undone.',
+          'This will stop data collection, clear all markers from the map, and PERMANENTLY delete all unsynced data.',
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
+            child: const Text('CANCEL', style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('RESET EVERYTHING', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -553,60 +711,69 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Widget _buildAppBarIconButton({
+    required IconData icon, 
+    required String tooltip, 
+    required VoidCallback? onPressed,
+    bool isLoading = false
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark.withOpacity(0.6),
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.cardBorder.withOpacity(0.3)),
+      ),
+      child: IconButton(
+        icon: isLoading 
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : Icon(icon, color: Colors.white, size: 20),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildMapControlBtn(IconData icon, VoidCallback? onTap, {bool isDestructive = false, bool isLoading = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark.withOpacity(0.9),
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.cardBorder.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8),
+        ],
+      ),
+      child: IconButton(
+        icon: isLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryBlue,
+                ),
+              )
+            : Icon(icon, color: isDestructive ? AppColors.error : Colors.white),
+        onPressed: onTap,
+      ),
+    );
+  }
+
   Future<void> _resetEverything() async {
     setState(() {
       if (_isCollecting) _toggleCollection();
       _markers.clear();
       _currentInfo = null;
     });
-
     await DatabaseHelper.instance.clearAll();
-
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('App reset successful. Local data cleared.'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppColors.success,
         ),
       );
     }
-  }
-}
-
-class _PulseIndicator extends StatefulWidget {
-  const _PulseIndicator();
-
-  @override
-  State<_PulseIndicator> createState() => _PulseIndicatorState();
-}
-
-class _PulseIndicatorState extends State<_PulseIndicator> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _controller,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-      ),
-    );
   }
 }

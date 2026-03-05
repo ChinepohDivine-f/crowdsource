@@ -45,10 +45,14 @@ A "Coverage Hole" is programmatically identified when the **RSRP** falls below *
 2. **Post-Processing**: The backend identifies clusters of "Red" markers.
 3. **Actionable Insight**: These clusters indicate areas where network infrastructure (e.g., base stations) needs optimization or additional deployment.
 
-## 5. Security & Data Flow
-1. **Local Security**: Data is stored in a private SQLite database on the device.
-2. **Transmission**: Measurements are batched and transmitted via JSON over HTTP.
-3. **Cloud Storage**: PostGIS ensures spatial integrity, allowing for advanced geographic queries (e.g., "Show all holes within 2km of this point").
+## 5. Security & User Management
+1.  **Authentication**: JSON Web Tokens (JWT) for secure, stateless user authentication.
+2.  **Role-Based Access Control (RBAC)**: 
+    - **Admin**: Full access to global data and user statistics via Web Dashboard.
+    - **User**: Mobile app access, can only view/manage their own contributions.
+3.  **Local Security**: Data is stored in a private SQLite database on the device.
+4.  **Transmission**: Measurements are batched and transmitted via JSON over HTTP (TLS/SSL).
+5.  **Cloud Storage**: PostGIS ensures spatial integrity, allowing for advanced geographic queries.
 
 ---
 *Prepared for Final Project Presentation - Grade Target: A+*

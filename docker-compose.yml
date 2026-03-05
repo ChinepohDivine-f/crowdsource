@@ -13,15 +13,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-  # Backend service definition for future use (if containerized)
-  # backend:
-  #   build: ./backend
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     - db
-  #   environment:
-  #     DATABASE_URL: postgresql://user:password@db:5432/drive_test
+  # Backend service
+  backend:
+    build: ./backend
+    container_name: crowdsource_backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      # Use the container name 'db' as the host, but internal port 5432
+      DATABASE_URL: postgresql://user:password@db:5432/drive_test
+    restart: unless-stopped
 
 volumes:
   postgres_data:
